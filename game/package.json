@@ -1,0 +1,12 @@
+{
+  "name": "forgotten",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "tsc --noEmit && vitest run",
+    "test": "vitest run"
+  },
+  "dependencies": { "three": "0.170.0" },
+  "devDependencies": { "@types/three": "0.170.0", "esbuild": "^0.24.0", "typescript": "^5.6.0", "vitest": "^2.1.0" }
+}
