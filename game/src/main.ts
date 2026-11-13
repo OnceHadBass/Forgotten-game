@@ -26,6 +26,8 @@ let ending = 0;
 let demo = false;
 let frames = 0;
 const DEBUG = location.search.includes('debug');
+/** `?seed=N` pins the campaign, so a test sees the same ruin every time. */
+const SEED = /[?&]seed=(\d+)/.exec(location.search) ? +/[?&]seed=(\d+)/.exec(location.search)![1] : null;
 let slow = 0, measured = 0, held = false, booted = false;
 const fade = document.createElement('div');
 fade.className = 'fade';
@@ -71,7 +73,7 @@ function toBase(): void {
 }
 
 const hud = new Hud(app, {
-  begin: () => { audio.start(); camp = newCampaign((Date.now() ^ (Math.random() * 0x7fffffff)) | 0, loadPrior()); startRun(1); setTimeout(() => hud.say('Left click to cut. Right click to shoot. Space to dodge. F for the torch.', 'note'), 2500); },
+  begin: () => { audio.start(); camp = newCampaign(SEED ?? (Date.now() ^ (Math.random() * 0x7fffffff)) | 0, loadPrior()); startRun(1); setTimeout(() => hud.say('Left click to cut. Right click to shoot. Space to dodge. F for the torch.', 'note'), 2500); },
   resume: () => { audio.start(); camp = loadCampaign(); if (camp) toBase(); },
   descend: (d) => { audio.start(); const p = camp?.roster[camp.current]; if (p?.alive && p.wound <= 0) startRun(d); },
   buy: (id) => { if (camp && buy(camp, id as UpgradeId)) { audio.play('equip'); toBase(); } },

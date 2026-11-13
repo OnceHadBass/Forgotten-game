@@ -21,7 +21,9 @@ export async function loadAssets(progress: (done: number, total: number) => void
   const jobs: Promise<void>[] = [];
   let done = 0;
   const tick = (): void => progress(++done, jobs.length);
-  for (const m of MODELS) jobs.push(gltf.loadAsync(`assets/models/${m}.glb`).then((g) => { models.set(m, g); tick(); }));
+  // models arrive as base64 inside JSON (see build.mjs)
+  const unpack = (b64: string): ArrayBuffer => { const bin = atob(b64), out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out.buffer; };
+  for (const m of MODELS) jobs.push(fetch(`assets/models/${m}.json`).then((r) => r.json() as Promise<{ glb: string }>).then((j) => gltf.parseAsync(unpack(j.glb), '')).then((g) => { models.set(m, g); tick(); }));
   for (const t of TEXTURES) for (const map of ['diff', 'nor', 'rough']) {
     jobs.push(tex.loadAsync(`assets/tex/${t}_${map}.jpg`).then((x) => {
       x.wrapS = x.wrapT = THREE.RepeatWrapping; x.anisotropy = 8;

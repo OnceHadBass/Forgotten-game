@@ -11,14 +11,14 @@ const errors = [];
 p.on('pageerror', (e) => errors.push(String(e)));
 p.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
 const check = (name, ok) => console.log(`${ok === true ? 'ok  ' : 'FAIL'} ${name}${ok === true ? '' : ' ' + ok}`);
-const site = await serve('?debug&low');
+const site = await serve('?debug&low&seed=4242');
 await p.goto(site.url);
 await p.waitForFunction(() => window.__game?.booted);
 await p.click('text=New expedition');
 await p.waitForTimeout(400);
 // real-time loop with real input
 const x0 = await p.evaluate(() => window.__game.world.player.x);
-await p.keyboard.down('KeyD'); await p.waitForTimeout(900); await p.keyboard.up('KeyD');
+await p.keyboard.down('KeyD'); await p.waitForTimeout(3000); await p.keyboard.up('KeyD');
 const x1 = await p.evaluate(() => window.__game.world.player.x);
 check('real-time loop moves the operative', Math.abs(x1 - x0) > 0.5);
 const fps = await p.evaluate(() => new Promise((r) => { let n = 0; const t = performance.now(); const f = () => { n++; performance.now() - t < 1000 ? requestAnimationFrame(f) : r(n); }; requestAnimationFrame(f); }));

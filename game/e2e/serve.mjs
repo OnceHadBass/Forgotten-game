@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 
-const TYPES = { '.html': 'text/html', '.glb': 'model/gltf-binary', '.jpg': 'image/jpeg', '.png': 'image/png', '.js': 'text/javascript' };
+const TYPES = { '.html': 'text/html', '.glb': 'model/gltf-binary', '.jpg': 'image/jpeg', '.png': 'image/png', '.js': 'text/javascript', '.json': 'application/json' };
 const root = new URL('../dist/', import.meta.url).pathname;
 
 /** Serves dist/ on a free port; resolves to the page's address with the given query. */
