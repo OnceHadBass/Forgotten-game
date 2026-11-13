@@ -180,7 +180,7 @@ export class View {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.toneMappingExposure = 1.28;
     this.scene.add(this.level, this.ents, this.hemi, this.torch, this.torch.target, this.suit, this.rig.root);
     this.torch.castShadow = true;
     this.torch.shadow.mapSize.set(2048, 2048);
@@ -469,7 +469,7 @@ export class View {
     this.torch.target.position.set(p.x + Math.cos(p.face) * 8.5, 0, p.z + Math.sin(p.face) * 8.5);
     this.suit.position.set(p.x, 2.2, p.z);
     this.suit.intensity = dark ? 7 : 15;
-    this.hemi.intensity += ((dark ? 2.6 : 4.2) - this.hemi.intensity) * Math.min(1, dt * 3);
+    this.hemi.intensity += ((dark ? 3.3 : 5.2) - this.hemi.intensity) * Math.min(1, dt * 3);
     this.wind.value = t;
     const reach = Math.min(15, rayWall(w.level, p.x, p.z, Math.cos(p.face), Math.sin(p.face), 15) + 1.2);
     this.cone.position.set(p.x, 1.25, p.z); this.cone.rotation.y = -p.face; this.cone.scale.set(reach, 1, reach);

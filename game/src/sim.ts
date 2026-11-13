@@ -203,7 +203,7 @@ function measure(w: World, type: EnemyId): void {
 
 /** Something seen that is no use to anyone. It only counts if the operative lives to tell it. */
 function wonder(w: World, id: string): void {
-  if (!w.wonders.includes(id) && (id === 'tags' || !w.camp.wonders.includes(id))) w.wonders.push(id);
+  if (!w.wonders.includes(id) && (id === 'tags' || !w.camp.wonders.includes(id))) { w.wonders.push(id); w.fx.push({ k: 'sound', s: 'wonder', x: w.player.x, z: w.player.z }); }
 }
 
 function tell(w: World, key: string, text: string): void {

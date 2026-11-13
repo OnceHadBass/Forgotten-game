@@ -3,7 +3,7 @@
 
 import { TUNE } from './data';
 import type { EndKind, UpgradeId } from './data';
-import { Audio } from './audio';
+import { Audio, RECIPES, TARGET, TRIM } from './audio';
 import { Hud } from './hud';
 import { View } from './render';
 import { fork } from './rng';
@@ -54,6 +54,7 @@ function startRun(depth: number, carry?: World): void {
   world = createWorld(camp, depth, carry?.player);
   view.build(world);
   mode = 'play'; ending = 0;
+  audio.setLayer(depth);
   setTimeout(() => fade.classList.remove('on'), 80);
   hud.show(true);
   saveCampaign(camp);
@@ -61,6 +62,7 @@ function startRun(depth: number, carry?: World): void {
 
 function toBase(): void {
   if (!camp) return;
+  audio.setLayer(1, true);
   fade.classList.remove('on');
   if (camp.over) recordExpedition(camp);
   saveCampaign(camp.over ? null : camp);
@@ -105,6 +107,7 @@ addEventListener('mouseup', (e) => { if (e.button === 0) mouse.l = false; if (e.
 addEventListener('contextmenu', (e) => e.preventDefault());
 addEventListener('wheel', (e) => { wheel = Math.sign(e.deltaY); }, { passive: true });
 addEventListener('resize', () => view.resize());
+addEventListener('click', (e) => { if ((e.target as HTMLElement).closest?.('.btn')) audio.play('ui'); });
 
 function readInput(w: World): Input {
   const k = (c: string): number => (keys.has(c) ? 1 : 0);
@@ -123,7 +126,8 @@ function readInput(w: World): Input {
 
 function finish(w: World): void {
   const c = w.camp;
-  if (w.outcome === 'descend') { startRun(w.depth + 1, w); return; }
+  if (w.outcome === 'descend') { audio.play('descend'); startRun(w.depth + 1, w); return; }
+  if (w.outcome === 'extracted') audio.play('extract');
   if (w.outcome === 'won') { settle(w); mode = 'over'; hud.vault(); return; }
   const away = c.current;
   passDay(c, fork(c.seed, 99, c.day), away, settle(w));
@@ -176,7 +180,7 @@ requestAnimationFrame(frame);
 // For tests and tinkering: ?debug exposes the world and a way to step it.
 if (location.search.includes('debug')) {
   (window as unknown as Record<string, unknown>).__game = {
-    get world() { return world; }, get camp() { return camp; }, view, audio,
+    get world() { return world; }, get camp() { return camp; }, view, audio, Audio, RECIPES, TARGET, TRIM,
     step: (n: number, input: Partial<Input> = {}) => { const w = world!; for (let i = 0; i < n; i++) { step(w, { mx: 0, mz: 0, aimX: w.player.x + 1, aimZ: w.player.z, attack: false, fire: false, dodge: false, interact: false, graft: false, relic: false, torch: false, medkit: false, cycle: 0, ...input }, 1 / 60); view.consume(w.fx, w); hud.fx(w.fx, view); w.fx.length = 0; } hud.update(w, view); view.update(w, n / 60); },
     hold: () => { mode = 'pause'; held = true; },
   };
