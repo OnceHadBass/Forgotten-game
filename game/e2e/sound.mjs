@@ -1,11 +1,14 @@
 // Nobody here can listen, so every sound is rendered offline and measured:
 // how loud, how long, roughly how bright, and whether a busy moment clips.
 import { createRequire } from 'node:module';
+import { serve } from './serve.mjs';
 const { chromium } = createRequire('/')('/opt/node-tools/node_modules/playwright/index.js');
 const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
 const p = await b.newPage({ viewport: { width: 640, height: 400 } });
 p.setDefaultTimeout(180000);
-await p.goto(new URL('../dist/index.html?debug&low', import.meta.url).href);
+const site = await serve('?debug&low');
+await p.goto(site.url);
+await p.waitForFunction(() => window.__game?.booted);
 const out = await p.evaluate(async () => {
   const G = window.__game, SR = 44100;
   const measure = (buf) => {
@@ -44,3 +47,4 @@ const bad = rows.filter(([, m]) => m.peak > 0.97 || m.peak < 0.02 || m.secs < 0.
 console.log(bad.length ? `OUT OF RANGE: ${bad.map(([n, m]) => `${n} (peak ${m.peak})`).join(', ')}` : `all ${rows.length} sounds within range`);
 console.log(out.busy.peak <= 1 ? 'busy moment does not clip' : `BUSY MOMENT CLIPS at ${out.busy.peak}`);
 await b.close();
+site.close();

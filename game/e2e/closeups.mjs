@@ -1,5 +1,6 @@
 // Close-ups for judging models: every plant body plan, every creature, the operative.
 import { createRequire } from 'node:module';
+import { serve } from './serve.mjs';
 import { mkdirSync } from 'node:fs';
 const { chromium } = createRequire('/')('/opt/node-tools/node_modules/playwright/index.js');
 const out = process.argv[2] ?? new URL('./screenshots', import.meta.url).pathname;
@@ -8,7 +9,9 @@ const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsaf
 const p = await b.newPage({ viewport: { width: 1200, height: 700 }, deviceScaleFactor: 1 });
 p.setDefaultTimeout(120000);
 const errors = []; p.on('pageerror', (e) => errors.push(String(e)));
-await p.goto(new URL('../dist/index.html?debug', import.meta.url).href);
+const site = await serve('?debug');
+await p.goto(site.url);
+await p.waitForFunction(() => window.__game?.booted);
 await p.click('text=New expedition'); await p.waitForTimeout(400);
 await p.evaluate(() => {
   const G = window.__game; G.hold(); const w = G.world, pl = w.player;
@@ -39,3 +42,4 @@ await g(() => {
 await p.screenshot({ path: `${out}/close-2-creatures.png` });
 console.log(errors.length ? errors.join('\n') : 'no errors');
 await b.close();
+site.close();

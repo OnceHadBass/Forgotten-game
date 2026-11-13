@@ -63,6 +63,11 @@ export class Hud {
 
   // ── screens ───────────────────────────────────────────────────────────────
 
+  loading(k: number): void {
+    this.show(false);
+    this.overlay.innerHTML = `<div class="sheet title"><p class="eyebrow">An isometric descent</p><h1>FORGOTTEN</h1><p class="lede">Bringing the lift up. ${Math.round(k * 100)}%</p><div class="growth" style="max-width:360px"><i style="width:${k * 100}%;background:var(--suit)"></i></div></div>`;
+  }
+
   title(saved: Campaign | null): void {
     this.show(false);
     this.overlay.classList.add('clear');

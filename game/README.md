@@ -10,7 +10,7 @@ npm install
 npm run build
 ```
 
-Then open `dist/index.html`. `npm run check` type-checks and runs the unit tests. `node e2e/flow.mjs` (after a build) plays the whole loop in headless Chromium and prints a checklist; `node e2e/shots.mjs` and `node e2e/life.mjs` save screenshots to `e2e/screenshots/`.
+Then serve `dist/` (for example `npx serve dist`) and open it. `npm run check` type-checks and runs the unit tests. `node e2e/flow.mjs` (after a build) plays the whole loop in headless Chromium and prints a checklist; `node e2e/shots.mjs` and `node e2e/life.mjs` save screenshots to `e2e/screenshots/`.
 
 ## Controls
 
@@ -44,6 +44,17 @@ Keyboard and mouse. WASD to move, the mouse aims the torch, left click swings th
 - `src/hud.ts`, `src/main.ts`: HUD, screens, input and the loop.
 
 `?debug` on the URL exposes `window.__game` (`world`, `camp`, `step(n, input)`, `hold()`).
+
+## Art assets
+
+Authored art lives in `public/assets/` and is copied into `dist/assets/` by the build. All of it is CC0 (public domain):
+
+- **KayKit** by Kay Lousberg (kaylousberg.com): the Adventurers and Skeletons character packs (rigged, with 76 to 95 animation clips each) and Dungeon Remastered (props). The operative is the Knight, repainted suit yellow; the husk is the Skeleton Warrior, repainted mossy.
+- **Poly Haven** (polyhaven.com): scanned stone materials (Monastery Stone Floor, Dark Rock 02, Mossy Rock), 1k colour, relief and roughness maps.
+
+`src/assets.ts` loads them at boot, `src/puppet.ts` drives a rigged figure from the simulation (looping clips play; attacks, rolls and slams are scrubbed to the simulation's clock), and `src/hero.ts` says which clip plays when. If the assets fail to load, the game falls back to the shapes it builds in code. Still built in code: the skulker, spitter, mites, the unlit thing, the Warden constructs, all plants, and the walls' shapes.
+
+Because the page now fetches files, open it through a web server, not as a file. The tests serve `dist/` themselves (`e2e/serve.mjs`).
 
 ## Look and sound
 

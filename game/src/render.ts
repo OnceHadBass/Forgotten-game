@@ -11,7 +11,10 @@ import { leafTexture, plantGeometry, propMesh, srgb, thicketGeometry, tuftGeomet
 import type { PlantGeo } from './models';
 import { animate, operative } from './operative';
 import type { Rig } from './operative';
+import { assets, material, prop } from './assets';
+import { animateHero, animateHusk, makeHero, makeHusk } from './hero';
 import { Post } from './post';
+import type { Puppet } from './puppet';
 import type { Fx, World } from './state';
 
 const WALL_H = 2.7, CUT = 0.2, VIEW = 16.5;
@@ -114,7 +117,7 @@ const glowTex = (): THREE.CanvasTexture => canvasTexture(128, (g) => {
 });
 
 interface PlantView { root: THREE.Group; glow: THREE.MeshBasicMaterial; pool: THREE.MeshBasicMaterial; base: THREE.Color; level: number; wilt: number; rear: number }
-interface EnemyView { c: Creature; bar: THREE.Mesh | null }
+interface EnemyView { c: Creature; bar: THREE.Mesh | null; puppet: Puppet | null }
 interface Ring { m: THREE.Mesh; t: number; max: number; r: number; grow: boolean }
 interface Flash { x: number; z: number; c: THREE.Color; t: number; max: number; power: number }
 
@@ -150,6 +153,7 @@ export class View {
   private decalN = 0;
   private seams: { x: number; z: number }[] = [];
   private post: Post;
+  private hero: Puppet | null = null;
   private wind = { value: 0 };
   private lowHp = 0;
   private walls: THREE.InstancedMesh | null = null;
@@ -285,6 +289,9 @@ export class View {
 
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(l.w * T, l.h * T).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: this.stone, normalMap: this.stoneN, normalScale: new THREE.Vector2(1.1, 1.1), roughnessMap: this.puddles, roughness: 1, color: new THREE.Color(look.floor).multiplyScalar(1.5) }));
     this.stoneN.repeat.set(l.w / 2, l.h / 2);
+    // scanned stone, where it loaded: worn paving underfoot (the standing water stays ours)
+    const paving = material('monastery_stone_floor');
+    if (paving) { const fm = floor.material as THREE.MeshStandardMaterial; fm.map = paving.map; fm.normalMap = paving.normalMap; fm.normalScale.set(1.4, 1.4); fm.color.set(look.floor).multiplyScalar(3.4); for (const tx2 of [paving.map, paving.normalMap]) tx2.repeat.set(l.w / 2.5, l.h / 2.5); }
     this.puddles.repeat.set(l.w / (w.depth === 2 ? 5 : 9), l.h / (w.depth === 2 ? 5 : 9));
     floor.position.set((l.w * T) / 2, 0, (l.h * T) / 2);
     (floor.material as THREE.MeshStandardMaterial).map!.repeat.set(l.w / 2, l.h / 2);
@@ -336,8 +343,13 @@ export class View {
         #endif
         #ifdef USE_NORMALMAP
           vNormalMapUv = wuv * 0.21;
+        #endif
+        #ifdef USE_ROUGHNESSMAP
+          vRoughnessMapUv = wuv * 0.21;
         #endif`);
     };
+    const scan = material(w.depth === 2 ? 'mossy_rock' : 'dark_rock_02');
+    if (scan) { wallMat.map = scan.map; wallMat.normalMap = scan.normalMap; wallMat.roughnessMap = scan.roughnessMap; wallMat.roughness = 1; wallMat.normalScale.set(1.6, 1.6); wallMat.color.set(look.wall).multiplyScalar(w.depth === 2 ? 2.6 : 3.2); }
     const cells: number[] = [], inner: number[] = [];
     for (let i = 0; i < l.tiles.length; i++) {
       if (l.tiles[i] !== WALL) continue;
@@ -413,6 +425,7 @@ export class View {
     rocks.forEach(([x, z, sc], n) => rubble.setMatrixAt(n, M.compose(P.set(x, 0.07 * sc, z), Q.setFromAxisAngle(S.set(rnd(), rnd(), rnd()).normalize(), rnd() * 6), S.set(sc, sc * 0.7, sc * (0.7 + rnd() * 0.6)))));
     rubble.castShadow = true; rubble.receiveShadow = true; rubble.frustumCulled = false;
     this.level.add(tufts, rubble);
+    if (assets.ready) for (let i = 0; i < rocks.length; i += 9) { const [x, z] = rocks[i]; const piece = prop(i % 2 ? 'rubble_half' : 'rubble_large', 1.6 + rnd() * 1.4); if (piece) { piece.position.set(x, 0, z); piece.rotation.y = rnd() * 6.28; this.level.add(piece); } }
 
     // Daylight through the broken roof: a shaft and a pool, no light of its own beyond the pooled one.
     for (const b of w.breaches) {
@@ -519,7 +532,8 @@ export class View {
 
     const lightsEarly: { x: number; z: number; c: THREE.Color; power: number }[] = [];
     // the operative
-    animate(this.rig, w, t, dt);
+    if (assets.ready && !this.hero) { this.hero = makeHero(); this.scene.add(this.hero.root); this.rig.root.visible = false; }
+    if (this.hero) animateHero(this.hero, w, t, dt); else animate(this.rig, w, t, dt);
 
     // light
     const cellGlow = p.torch ? 1 : 0;
@@ -532,7 +546,7 @@ export class View {
     this.wind.value = t;
     const reach = Math.min(15, rayWall(w.level, p.x, p.z, Math.cos(p.face), Math.sin(p.face), 15) + 1.2);
     this.cone.position.set(p.x, 1.25, p.z); this.cone.rotation.y = -p.face; this.cone.scale.set(reach, 1, reach);
-    (this.cone.material as THREE.ShaderMaterial).uniforms.power.value = this.torch.intensity / 170 * 0.16;
+    (this.cone.material as THREE.ShaderMaterial).uniforms.power.value = this.torch.intensity / 170 * 0.06;
     this.haze.position.x = this.target.x; this.haze.position.z = this.target.z;
     const hm = (this.haze.material as THREE.MeshBasicMaterial).map!;
     hm.offset.set(this.target.x / 80 * 3 + t * 0.004, -this.target.z / 80 * 3 + t * 0.0027);
@@ -677,22 +691,31 @@ export class View {
     const t = this.time;
     for (const e of w.enemies) {
       let v = this.enemies.get(e.id);
-      if (e.dead && e.deadT > 0.4) { if (v) { this.ents.remove(v.c.root); this.enemies.delete(e.id); } continue; }
+      if (e.dead && e.deadT > (v?.puppet ? 2.2 : 0.4)) { if (v) { this.ents.remove(v.c.root); this.enemies.delete(e.id); } continue; }
       if (!v) {
         const c = creature(e.type);
         c.yaw = e.face;
         if (e.elite) c.root.scale.setScalar(1.25);
+        const puppet = e.type === 'husk' && assets.ready ? makeHusk() : null;
+        if (puppet) { c.root.clear(); c.root.add(puppet.root); c.body = new THREE.Group(); }
         this.ents.add(c.root);
-        v = { c, bar: null };
+        v = { c, bar: null, puppet };
         this.enemies.set(e.id, v);
       }
       const { root, body, skin } = v.c;
       root.position.set(e.x, 0, e.z);
       root.visible = this.inView(e.x, e.z);
-      if (e.dead) { const k = 1 - e.deadT / 0.4; body.scale.set(1 + (1 - k) * 0.5, Math.max(0.02, k), 1 + (1 - k) * 0.5); body.rotation.z = (1 - k) * 0.6; continue; }
+      if (v.puppet) {
+        // an authored figure: the root carries the heading, the clips do the rest
+        if (!e.dead) { const lean = Math.atan2(Math.sin(e.face - v.c.yaw), Math.cos(e.face - v.c.yaw)); v.c.yaw += lean * Math.min(1, dt * 7); }
+        root.rotation.y = -v.c.yaw;
+        v.puppet.root.position.set(0, 0, 0);
+        animateHusk(v.puppet, { ...e, x: 0, z: 0 }, dt);
+      }
+      if (v.puppet) { if (e.dead) continue; } else if (e.dead) { const k = 1 - e.deadT / 0.4; body.scale.set(1 + (1 - k) * 0.5, Math.max(0.02, k), 1 + (1 - k) * 0.5); body.rotation.z = (1 - k) * 0.6; continue; }
       const pale = e.type === 'tender' || e.type === 'warden';
       skin.emissive.setHex(e.flash > 0 || (e.type === 'warden' && e.state === 'windup') ? 0xffffff : e.state === 'windup' && !pale ? 0x5a1810 : pale ? 0x8fa3ad : 0x000000);
-      animateCreature(v.c, e, t, dt);
+      if (!v.puppet) animateCreature(v.c, e, t, dt);
       if (e.type === 'grazer') lights.push({ x: e.x, z: e.z, c: GRAZER, power: 2.6 });
       if (e.type === 'warden') lights.push({ x: e.x, z: e.z, c: WARDEN, power: e.phase ? 9 : 4 });
 
@@ -722,7 +745,7 @@ export class View {
     const t = this.time, white = C.clone().setHex(0xf3fbff), yellow = C.clone().setHex(0xf0bf2c);
     for (const q of w.props) {
       let o = this.props.get(q.id);
-      if (!o) { o = propMesh(q.kind); o.position.set(q.x, 0, q.z); o.rotation.y = q.kind === 'urn' || q.kind === 'crate' || q.kind === 'body' ? q.rot : 0; this.ents.add(o); this.props.set(q.id, o); }
+      if (!o) { o = this.kitProp(q.kind, q.id, q.data) ?? propMesh(q.kind); o.position.set(q.x, 0, q.z); o.rotation.y = q.kind === 'urn' || q.kind === 'crate' || q.kind === 'body' ? q.rot : 0; this.ents.add(o); this.props.set(q.id, o); }
       if (q.used && (q.kind === 'urn' || q.kind === 'crate')) o.visible = false;
       const spin = o.getObjectByName('spin');
       if (spin) { spin.rotation.z = t * 0.35; lights.push({ x: q.x, z: q.z, c: white, power: 6 }); }
@@ -795,6 +818,20 @@ export class View {
       this.particle(pr.x, 1.0, pr.z, 0, 0, 0, C.setHex(0x8a2f8a), 0.22, 0.25);
       lights.push({ x: pr.x, z: pr.z, c: C.clone().setHex(0xe06ae0), power: 6 });
     }
+  }
+
+  /** Human kit comes from the authored set where there is a piece for it. */
+  private kitProp(kind: string, id: number, data: number): THREE.Object3D | null {
+    if (!assets.ready) return null;
+    if (kind === 'crate') return prop((['box_small', 'box_large', 'barrel_small', 'crates_stacked'] as const)[id % 4], id % 4 === 3 ? 1.5 : 0.95);
+    if (kind === 'chest') { const g = prop(data === 1 ? 'chest_gold' : 'chest', 1.5); const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.05), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xf0bf2c).multiplyScalar(1.6) })); lamp.position.y = 1.1; lamp.name = 'lamp'; g?.add(lamp); return g; }
+    if (kind === 'camp') {
+      const g = new THREE.Group();
+      const put = (o: THREE.Object3D | null, x: number, z: number, r: number): void => { if (o) { o.position.set(x, 0, z); o.rotation.y = r; g.add(o); } };
+      put(prop('bed_floor', 1.9), -1.1, 0.3, 0.4); put(prop('table_small', 1.1), 0.9, -0.6, 0.2); put(prop('crates_stacked', 1.4), 1.2, 0.9, 1.1); put(prop('barrel_large', 0.9), -0.2, -1.2, 0); put(prop('trunk_small_A', 0.9), 0.1, 1.1, 2.2);
+      return g;
+    }
+    return null;
   }
 
   /** Off-screen things are not drawn and cast no shadows. The screen is about 30 m across. */

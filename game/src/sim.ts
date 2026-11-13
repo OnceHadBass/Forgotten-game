@@ -165,7 +165,8 @@ function populate(w: World): void {
   }
   const rooms = l.rooms.filter((r) => r.kind !== 'start');
   const halls = l.rooms.filter((r) => r.kind === 'hall' || r.kind === 'nest');
-  const piece = (kind: PropKind): void => { const p = halls.length ? spot(w, pick(h, halls), 1.6, 1) : null; if (p) addProp(w, kind, p.x, p.z); };
+  // a set piece must not fail to appear for want of floor: try every room, with less elbow room each time
+  const piece = (kind: PropKind): void => { for (const gap of [1.6, 1.0, 0.6]) for (const r of [...halls, ...rooms]) { const p = spot(w, r, gap, gap > 1 ? 1 : 0); if (p) { addProp(w, kind, p.x, p.z); return; } } };
   if (depth === 2 && !camp.wonders.includes('choir')) piece('mark');
   if (depth === 3 && !camp.wonders.includes('wheel')) piece('wheel');
   if (depth === 1 && camp.prior && !camp.told.camp) piece('camp');

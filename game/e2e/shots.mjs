@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { serve } from './serve.mjs';
 const { chromium } = createRequire('/')('/opt/node-tools/node_modules/playwright/index.js');
 const out = process.argv[2] ?? new URL('./screenshots', import.meta.url).pathname;
 import { mkdirSync } from 'node:fs';
@@ -9,7 +10,9 @@ p.setDefaultTimeout(180000);
 const errors = [];
 p.on('pageerror', (e) => errors.push(String(e)));
 p.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-await p.goto(new URL('../dist/index.html?debug&low', import.meta.url).href);
+const site = await serve('?debug&low');
+await p.goto(site.url);
+await p.waitForFunction(() => window.__game?.booted);
 await p.waitForTimeout(800);
 await p.screenshot({ path: `${out}/1-title.png` });
 await p.click('text=New expedition');
@@ -37,3 +40,4 @@ await g(() => { const G = window.__game, w = G.world; G.step(2, { torch: true, a
 await p.screenshot({ path: `${out}/6-dark.png` });
 console.log(errors.length ? errors.slice(0, 6).join('\n') : 'no errors');
 await b.close();
+site.close();

@@ -1,5 +1,6 @@
 // A contact sheet of the operative's poses, cut from the middle of the screen.
 import { createRequire } from 'node:module';
+import { serve } from './serve.mjs';
 import { mkdirSync } from 'node:fs';
 const { chromium } = createRequire('/')('/opt/node-tools/node_modules/playwright/index.js');
 const out = process.argv[2] ?? new URL('./screenshots', import.meta.url).pathname;
@@ -8,7 +9,9 @@ const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsaf
 const p = await b.newPage({ viewport: { width: 1280, height: 760 }, deviceScaleFactor: 1 });
 p.setDefaultTimeout(180000);
 const errors = []; p.on('pageerror', (e) => errors.push(String(e)));
-await p.goto(new URL('../dist/index.html?debug&low', import.meta.url).href);
+const site = await serve('?debug&low');
+await p.goto(site.url);
+await p.waitForFunction(() => window.__game?.booted);
 await p.click('text=New expedition'); await p.waitForTimeout(400);
 await p.evaluate(() => { const G = window.__game; G.hold(); const w = G.world; w.enemies.forEach((e) => (e.dead = true)); w.player.invuln = 9999; document.querySelector('.hud').style.display = 'none'; G.view.zoom = 3.2; G.view.resize(); });
 const clip = { x: 440, y: 150, width: 400, height: 400 };
@@ -24,3 +27,4 @@ await shot('7-fire', () => { const G = window.__game, w = G.world; G.step(60, { 
 await shot('8-dead', () => { const G = window.__game, w = G.world; w.player.state = 'dead'; G.step(1); for (let i = 0; i < 50; i++) G.view.update(w, 1 / 30); });
 console.log(errors.length ? errors.join('\n') : 'no errors');
 await b.close();
+site.close();

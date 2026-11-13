@@ -3,6 +3,7 @@
 
 import { TUNE } from './data';
 import type { EndKind, UpgradeId } from './data';
+import { loadAssets } from './assets';
 import { Audio, RECIPES, TARGET, TRIM } from './audio';
 import { Hud } from './hud';
 import { View } from './render';
@@ -25,7 +26,7 @@ let ending = 0;
 let demo = false;
 let frames = 0;
 const DEBUG = location.search.includes('debug');
-let slow = 0, measured = 0, held = false;
+let slow = 0, measured = 0, held = false, booted = false;
 const fade = document.createElement('div');
 fade.className = 'fade';
 app.append(fade);
@@ -89,8 +90,9 @@ const hud = new Hud(app, {
 });
 try { const st = JSON.parse(localStorage.getItem('forgotten.settings') ?? 'null') as { volume: number; shake: number } | null; if (st) { hud.settings = st; audio.setVolume(st.volume); view.shakeScale = st.shake; } } catch { /* defaults */ }
 if (location.search.includes('low')) view.setQuality(true);
-backdrop();
-hud.title(loadCampaign());
+// The art comes first; without it the game still runs on what it can build itself.
+hud.loading(0);
+void loadAssets((done, total) => hud.loading(done / total)).then(() => { backdrop(); hud.title(loadCampaign()); booted = true; });
 
 addEventListener('keydown', (e) => {
   if (mode === 'play' && ['Tab', 'Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code)) e.preventDefault();
@@ -183,7 +185,7 @@ requestAnimationFrame(frame);
 // For tests and tinkering: ?debug exposes the world and a way to step it.
 if (location.search.includes('debug')) {
   (window as unknown as Record<string, unknown>).__game = {
-    get world() { return world; }, get camp() { return camp; }, view, audio, Audio, RECIPES, TARGET, TRIM,
+    get world() { return world; }, get camp() { return camp; }, get booted() { return booted; }, view, audio, Audio, RECIPES, TARGET, TRIM,
     step: (n: number, input: Partial<Input> = {}) => { const w = world!; for (let i = 0; i < n; i++) { step(w, { mx: 0, mz: 0, aimX: w.player.x + 1, aimZ: w.player.z, attack: false, fire: false, dodge: false, interact: false, graft: false, relic: false, torch: false, medkit: false, cycle: 0, ...input }, 1 / 60); view.consume(w.fx, w); hud.fx(w.fx, view); w.fx.length = 0; } hud.update(w, view); view.update(w, n / 60); },
     hold: () => { mode = 'pause'; held = true; },
   };
