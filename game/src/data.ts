@@ -78,6 +78,27 @@ export const ENEMIES: Record<EnemyId, EnemyData> = {
   tender: { name: 'The Tender', hp: 820, speed: 2.4, r: 1.3, dmg: 24, sight: 40, poise: 999, range: 14, windup: 1.0, recover: 1.0, loot: 1 },
 };
 
+/** What the operative works out about a creature: on first sight, then once it has drawn blood or died. */
+export const CREATURES: Record<EnemyId, { cause: string; first: string; trick: string }> = {
+  mite: { cause: 'mites', first: 'Mites. Small, fast, and never just one.', trick: 'They pour out of a nest when the nest wakes. Do not wake it, or cut it down first.' },
+  skulker: { cause: 'a skulker', first: 'Eyeshine, low to the ground. A skulker. It is watching my torch.', trick: 'It crouches before it lunges. Step aside when it crouches and cut it while it recovers. It sees a lit torch from a long way off.' },
+  spitter: { cause: 'a spitter', first: 'Something on three thin legs, with a sac that glows. A spitter.', trick: 'The sac swells before it spits, and it backs away from you. Dodge the glob and close the distance.' },
+  husk: { cause: 'a husk', first: 'Big. Slow. Plated in its own moss. A husk.', trick: 'It raises both arms before it slams. Get out of the ring, then hit it while its arms are down.' },
+  unlit: { cause: 'the thing that moves when unlit', first: 'Something stands at the edge of the beam. It was further away a moment ago.', trick: 'It only moves when no light is on it. Keep the beam on it, stand by a lantern plant, or throw a light pod.' },
+  grazer: { cause: '', first: 'Small lights, drifting between the plants. Grazers, feeding. They scatter when I move.', trick: 'Harmless. Plants that sense nearness take them out of the air: watch which ones.' },
+  warden: { cause: 'the gardener', first: 'Rows. Sleeping plants in rows, and a thing of pale struts turning each one a little. It does not look up.', trick: 'It gardens. It only turns on you if you cut what it tends, or strike it. It flashes white before its beam: move then.' },
+  tender: { cause: 'the Tender', first: 'It unfolds from the door like a hand opening. The Tender.', trick: 'The beam sweeps: put a pillar between you. The ring spreads: dodge through it. It calls mites.' },
+};
+
+/** Said once a campaign, the first time each kind of thing is picked up. */
+export const PICKUPS = {
+  salvage: 'Salvage. Alloy and filament. The base turns it into kit, if I get it home.',
+  ammo: 'Rounds. Right click fires, and everything hears it.',
+  medkit: 'A medkit. H to use one.',
+  cell: 'A suit cell. The torch will last longer.',
+  sample: 'A sample, sealed. Two from the same species and the suit can work out what it does.',
+} as const;
+
 // ── items ───────────────────────────────────────────────────────────────────
 
 export type Slot = 'blade' | 'gun' | 'suit';
@@ -175,6 +196,7 @@ export const THOUGHTS = {
   angry: ['It has stopped gardening. It is looking at me.'],
   grazer: ['Small lights, drifting between the plants. Feeding. They scatter when I move.'],
   eaten: ['It took one of the little lights out of the air. So that is what it does.'],
+  bullets: ['The round went straight through it. It hardly noticed. It noticed me.'],
   breach: ['Daylight, coming down through the roof. Things grow thicker under it.'],
 } as const;
 

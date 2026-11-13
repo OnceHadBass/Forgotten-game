@@ -166,37 +166,51 @@ export function operative(): Rig {
   return { root, body, arm, legL, legR, skin: suit };
 }
 
-export interface Creature { root: THREE.Group; body: THREE.Object3D; skin: THREE.MeshStandardMaterial; extra: THREE.Object3D[] }
+export interface Creature { root: THREE.Group; body: THREE.Object3D; skin: THREE.MeshStandardMaterial; extra: THREE.Object3D[]; legs: THREE.Object3D[] }
 
 export function creature(type: EnemyId): Creature {
-  const root = new THREE.Group(), body = new THREE.Group(), extra: THREE.Object3D[] = [];
+  const root = new THREE.Group(), body = new THREE.Group(), extra: THREE.Object3D[] = [], legs: THREE.Object3D[] = [];
   root.add(body);
   let skin: THREE.MeshStandardMaterial;
   const eye = (c: number): THREE.MeshBasicMaterial => new THREE.MeshBasicMaterial({ color: c });
   const dot = (m: THREE.Material, r: number, x: number, y: number, z: number): THREE.Mesh => { const o = new THREE.Mesh(new THREE.SphereGeometry(r, 6, 5), m); o.position.set(x, y, z); return o; };
+  // A limb hangs from its top end, so turning it swings the foot.
+  const limb = (g: THREE.BufferGeometry, len: number, m: THREE.Material, x: number, y: number, z: number): THREE.Mesh => { const o = mesh(g.translate(0, -len / 2, 0), m, x, y, z); legs.push(o); return o; };
   if (type === 'mite') {
     skin = mat(0x39464b, { roughness: 0.4 });
-    body.add(mesh(new THREE.OctahedronGeometry(0.27), skin, 0, 0.26, 0), dot(eye(0xc9f7ee), 0.05, 0.2, 0.3, 0));
+    body.add(mesh(new THREE.SphereGeometry(0.2, 6, 5).scale(1.3, 0.75, 1), skin, 0, 0.24, 0), mesh(new THREE.SphereGeometry(0.11, 5, 4), skin, 0.26, 0.24, 0), dot(eye(0xc9f7ee), 0.04, 0.34, 0.27, 0.05), dot(eye(0xc9f7ee), 0.04, 0.34, 0.27, -0.05));
+    for (let i = 0; i < 6; i++) { const l = limb(new THREE.CylinderGeometry(0.018, 0.012, 0.3, 3), 0.3, skin, 0.14 - (i >> 1) * 0.14, 0.22, i % 2 ? 0.14 : -0.14); l.rotation.x = i % 2 ? -0.9 : 0.9; l.userData.rx = l.rotation.x; body.add(l); }
   } else if (type === 'skulker') {
     skin = mat(0x46555b, { roughness: 0.55 });
-    body.add(mesh(new THREE.CapsuleGeometry(0.3, 0.8, 3, 7).rotateZ(Math.PI / 2), skin, 0, 0.55, 0), mesh(new THREE.ConeGeometry(0.24, 0.5, 5).rotateZ(-Math.PI / 2), skin, 0.75, 0.6, 0), mesh(new THREE.ConeGeometry(0.1, 0.9, 4).rotateZ(Math.PI / 2), skin, -0.95, 0.6, 0));
-    for (const [x, z] of [[0.4, 0.3], [0.4, -0.3], [-0.4, 0.3], [-0.4, -0.3]]) body.add(mesh(box(0.1, 0.55, 0.1), skin, x, 0.25, z));
-    body.add(dot(eye(0xd8fff6), 0.045, 0.82, 0.68, 0.11), dot(eye(0xd8fff6), 0.045, 0.82, 0.68, -0.11));
+    const chest = mesh(new THREE.SphereGeometry(0.34, 7, 6).scale(1.25, 0.95, 0.9), skin, 0.3, 0.62, 0);
+    const hips = mesh(new THREE.SphereGeometry(0.27, 7, 6).scale(1.3, 0.9, 0.85), skin, -0.38, 0.56, 0);
+    const head = new THREE.Group();
+    head.position.set(0.68, 0.66, 0);
+    head.add(mesh(new THREE.ConeGeometry(0.2, 0.55, 5).rotateZ(-Math.PI / 2), skin, 0.2, 0, 0), dot(eye(0xd8fff6), 0.045, 0.2, 0.1, 0.11), dot(eye(0xd8fff6), 0.045, 0.2, 0.1, -0.11));
+    const tail = new THREE.Group();
+    tail.position.set(-0.68, 0.6, 0);
+    tail.add(mesh(new THREE.ConeGeometry(0.09, 1.0, 4).rotateZ(Math.PI / 2), skin, -0.5, 0, 0));
+    body.add(chest, hips, mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.6, 6).rotateZ(Math.PI / 2), skin, -0.04, 0.6, 0), head, tail);
+    for (const [x, z] of [[0.38, 0.27], [0.38, -0.27], [-0.42, 0.25], [-0.42, -0.25]]) body.add(limb(new THREE.CylinderGeometry(0.07, 0.04, 0.6, 4), 0.6, skin, x, 0.6, z));
+    extra.push(head, tail);
   } else if (type === 'spitter') {
     skin = mat(0x4a4656, { roughness: 0.5 });
     const sac = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), new THREE.MeshBasicMaterial({ color: 0xc94fd0 }));
     sac.position.set(0.12, 1.05, 0);
     body.add(mesh(new THREE.SphereGeometry(0.42, 8, 6), skin, 0, 0.95, 0), sac);
-    for (let i = 0; i < 3; i++) { const l = mesh(new THREE.CylinderGeometry(0.04, 0.03, 1.1, 4), skin, Math.cos(i * 2.09) * 0.35, 0.5, Math.sin(i * 2.09) * 0.35); l.rotation.set(Math.sin(i * 2.09) * 0.4, 0, -Math.cos(i * 2.09) * 0.4); body.add(l); }
+    for (let i = 0; i < 3; i++) { const l = limb(new THREE.CylinderGeometry(0.05, 0.025, 1.15, 4), 1.15, skin, Math.cos(i * 2.09) * 0.22, 1.0, Math.sin(i * 2.09) * 0.22); l.rotation.set(Math.sin(i * 2.09) * 0.5, 0, -Math.cos(i * 2.09) * 0.5); l.userData.rx = l.rotation.x; l.userData.rz = l.rotation.z; body.add(l); }
     extra.push(sac);
   } else if (type === 'husk') {
     skin = mat(0x555c50, { roughness: 0.9 });
     const moss = mat(0x1e3a26, { roughness: 1 });
-    body.add(mesh(new THREE.CapsuleGeometry(0.72, 0.9, 3, 8), skin, 0, 1.15, 0), mesh(new THREE.SphereGeometry(0.3, 7, 5), skin, 0.5, 1.95, 0));
-    for (let i = 0; i < 4; i++) body.add(mesh(box(0.5, 0.14, 0.7), i % 2 ? moss : skin, -0.45 + i * 0.07, 1.0 + i * 0.3, 0));
-    const armL = mesh(new THREE.CapsuleGeometry(0.2, 1.0, 2, 6), skin, 0.25, 1.0, 0.85), armR = mesh(new THREE.CapsuleGeometry(0.2, 1.0, 2, 6), skin, 0.25, 1.0, -0.85);
-    body.add(armL, armR, dot(eye(0xff9c7a), 0.05, 0.75, 2.0, 0.1), dot(eye(0xff9c7a), 0.05, 0.75, 2.0, -0.1));
-    extra.push(armL, armR);
+    const torso = new THREE.Group();
+    torso.add(mesh(new THREE.CapsuleGeometry(0.72, 0.7, 3, 8), skin, 0, 1.35, 0), mesh(new THREE.SphereGeometry(0.3, 7, 5), skin, 0.5, 2.05, 0));
+    for (let i = 0; i < 4; i++) torso.add(mesh(box(0.5, 0.14, 0.7), i % 2 ? moss : skin, -0.45 + i * 0.07, 1.2 + i * 0.3, 0));
+    const armL = limb(new THREE.CapsuleGeometry(0.2, 1.0, 2, 6), 1.4, skin, 0.2, 1.9, 0.9), armR = limb(new THREE.CapsuleGeometry(0.2, 1.0, 2, 6), 1.4, skin, 0.2, 1.9, -0.9);
+    legs.length = 0;
+    torso.add(armL, armR, dot(eye(0xff9c7a), 0.05, 0.75, 2.1, 0.1), dot(eye(0xff9c7a), 0.05, 0.75, 2.1, -0.1));
+    body.add(torso, limb(new THREE.CapsuleGeometry(0.24, 0.4, 2, 6), 0.85, skin, 0, 0.85, 0.36), limb(new THREE.CapsuleGeometry(0.24, 0.4, 2, 6), 0.85, skin, 0, 0.85, -0.36));
+    extra.push(armL, armR, torso);
   } else if (type === 'unlit') {
     // No eyes, no glow. It is only ever seen as a shape against lit stone.
     skin = mat(0x040506, { roughness: 1 });
@@ -221,7 +235,7 @@ export function creature(type: EnemyId): Creature {
     extra.push(core, ring);
     if (type === 'warden') root.scale.setScalar(0.48);
   }
-  return { root, body, skin, extra };
+  return { root, body, skin, extra, legs };
 }
 
 export function propMesh(kind: string): THREE.Object3D {

@@ -53,7 +53,7 @@ const glowTex = (): THREE.CanvasTexture => canvasTexture(128, (g) => {
 });
 
 interface PlantView { root: THREE.Group; glow: THREE.MeshBasicMaterial; pool: THREE.MeshBasicMaterial; base: THREE.Color; level: number }
-interface EnemyView { c: Creature; bar: THREE.Mesh | null }
+interface EnemyView { c: Creature; bar: THREE.Mesh | null; yaw: number }
 interface Ring { m: THREE.Mesh; t: number; max: number; r: number; grow: boolean }
 interface Flash { x: number; z: number; c: THREE.Color; t: number; max: number; power: number }
 
@@ -464,29 +464,55 @@ export class View {
         c.body.traverse((o) => { if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshStandardMaterial && o.material.color.getHex() === c.skin.color.getHex() && o.material.roughness === c.skin.roughness) o.material = c.skin; });
         if (e.elite) c.root.scale.setScalar(1.25);
         this.ents.add(c.root);
-        v = { c, bar: null };
+        v = { c, bar: null, yaw: e.face };
         this.enemies.set(e.id, v);
       }
-      const { root, body, skin, extra } = v.c;
+      const { root, body, skin, extra, legs } = v.c;
       root.position.set(e.x, 0, e.z);
-      root.rotation.y = -e.face;
+      // Nothing alive turns on the spot: the body follows the heading a beat behind.
+      const turn = e.type === 'unlit' ? 60 : e.state === 'windup' ? 18 : 9;
+      v.yaw += Math.atan2(Math.sin(e.face - v.yaw), Math.cos(e.face - v.yaw)) * Math.min(1, dt * turn);
+      root.rotation.y = -v.yaw;
       body.scale.setScalar(1); body.position.set(0, 0, 0); body.rotation.set(0, 0, 0);
       if (e.dead) { const k = 1 - e.deadT / 0.4; body.scale.set(1 + (1 - k) * 0.5, k, 1 + (1 - k) * 0.5); continue; }
       const pale = e.type === 'tender' || e.type === 'warden';
       skin.emissive.setHex(e.flash > 0 || (e.type === 'warden' && e.state === 'windup') ? 0xffffff : e.state === 'windup' && !pale ? 0x5a1810 : pale ? 0x8fa3ad : 0x000000);
-      const moving = e.state === 'chase' || e.state === 'idle';
-      if (e.type === 'mite') body.position.y = Math.abs(Math.sin(t * 16 + e.id)) * 0.18;
-      if (e.type === 'skulker') {
-        if (e.state === 'windup') { body.scale.set(0.85, 0.7, 1.1); body.position.x = -0.25; }
-        else if (e.state === 'strike') body.scale.set(1.35, 0.85, 0.9);
-        else if (moving) body.position.y = Math.abs(Math.sin(t * 9 + e.id)) * 0.07;
+      const speed = Math.hypot(e.sx, e.sz), go = Math.min(1, speed / 1.5), g = e.gait, breath = Math.sin(t * 1.8 + e.id);
+      const lean = Math.atan2(Math.sin(e.face - v.yaw), Math.cos(e.face - v.yaw));
+      if (e.type === 'mite') {
+        body.position.y = go * Math.abs(Math.sin(g * 9)) * 0.06;
+        body.rotation.set(lean * 0.6, 0, Math.sin(g * 9) * 0.12 * go);
+        legs.forEach((l, i) => { l.rotation.x = (l.userData.rx as number) + Math.sin(g * 18 + i * 2.1) * 0.5 * go; });
       }
-      if (e.type === 'spitter') { const s = e.state === 'windup' ? 1 + (1 - e.t / 0.55) * 0.7 : 1 + Math.sin(t * 3 + e.id) * 0.08; extra[0].scale.setScalar(s); body.position.y = Math.sin(t * 5 + e.id) * 0.04; }
+      if (e.type === 'skulker') {
+        const [head, tail] = extra;
+        // a bounding gait: front and back pairs out of step, the spine flexing between them
+        legs.forEach((l, i) => { l.rotation.z = Math.sin(g * 2.6 + (i < 2 ? 0 : 2.2) + (i % 2 ? 0.5 : 0)) * 0.75 * go; });
+        body.rotation.set(lean * 0.5, Math.sin(g * 2.6) * 0.07 * go, Math.sin(g * 2.6 + 1) * 0.06 * go);
+        body.position.y = Math.abs(Math.sin(g * 2.6)) * 0.09 * go + breath * 0.012;
+        tail.rotation.y = Math.sin(t * 2.2 + e.id) * 0.35 - lean * 1.5; tail.rotation.z = 0.15 + breath * 0.05;
+        head.rotation.y = e.state === 'idle' ? Math.sin(t * 0.6 + e.id * 2) * 0.6 : lean; head.rotation.z = e.state === 'idle' ? Math.sin(t * 0.37 + e.id) * 0.2 - 0.1 : 0;
+        if (e.state === 'windup') { body.scale.set(0.9, 0.72, 1.1); body.position.x = -0.3; head.rotation.z = -0.35; tail.rotation.z = 0.7; legs.forEach((l, i) => { l.rotation.z = i < 2 ? 0.6 : -0.5; }); }
+        else if (e.state === 'strike') { body.scale.set(1.3, 0.85, 0.92); legs.forEach((l, i) => { l.rotation.z = i < 2 ? 1.1 : -1.1; }); }
+        else if (e.state === 'recover') body.rotation.z = -0.08;
+      }
+      if (e.type === 'spitter') {
+        const s = e.state === 'windup' ? 1 + (1 - e.t / 0.55) * 0.7 : 1 + breath * 0.08;
+        extra[0].scale.setScalar(s);
+        body.position.y = Math.sin(g * 5) * 0.06 * go + breath * 0.025;
+        body.rotation.set(Math.sin(g * 2.5) * 0.06 * go, 0, -0.1 * go + (e.state === 'windup' ? 0.25 : 0));
+        legs.forEach((l, i) => { const ph = Math.sin(g * 5 + i * 2.09) * 0.3 * go; l.rotation.x = (l.userData.rx as number) + ph * Math.sin(i * 2.09); l.rotation.z = (l.userData.rz as number) - ph * Math.cos(i * 2.09) - ph * 0.5; });
+      }
       if (e.type === 'husk') {
-        const up = e.state === 'windup' ? 1 - e.t / 0.8 : 0;
-        extra[0].position.y = extra[1].position.y = 1.0 + up * 1.3;
-        body.rotation.z = e.state === 'strike' ? -0.35 : up * 0.25;
-        if (moving) body.rotation.x = Math.sin(t * 4 + e.id) * 0.07;
+        const [armL, armR, torso] = extra;
+        const up = e.state === 'windup' ? 1 - e.t / 0.8 : 0, step = Math.sin(g * 1.6);
+        // it heaves itself along: weight thrown from one side to the other
+        legs[0].rotation.z = step * 0.5 * go; legs[1].rotation.z = -step * 0.5 * go;
+        torso.rotation.set(step * 0.13 * go, 0, 0.14 + Math.abs(step) * 0.05 * go + breath * 0.012 - up * 0.3);
+        torso.position.y = Math.abs(Math.cos(g * 1.6)) * 0.07 * go;
+        armL.rotation.z = -step * 0.45 * go - up * 2.6; armR.rotation.z = step * 0.45 * go - up * 2.6;
+        if (e.state === 'strike') { torso.rotation.z = 0.5; armL.rotation.z = armR.rotation.z = 0.9; }
+        if (e.state === 'recover') torso.rotation.z = 0.32;
       }
       if (e.type === 'unlit' && !e.frozen && e.state !== 'recover') { body.rotation.z = -0.3; extra[0].rotation.z = extra[1].rotation.z = -1.1; body.position.x = Math.sin(t * 60) * 0.03; }
       else if (e.type === 'unlit') extra[0].rotation.z = extra[1].rotation.z = 0;

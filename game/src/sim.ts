@@ -1,7 +1,7 @@
 // The simulation: fixed-step, seeded, and blind to three.js. It mutates the
 // World and queues Fx for the view and the audio to play.
 
-import { BEHAVIOURS, BLADES, ENEMIES, GUNS, LORE, RELICS, T, THOUGHTS, TUNE } from './data';
+import { BEHAVIOURS, BLADES, CREATURES, ENEMIES, GUNS, LORE, PICKUPS, RELICS, T, THOUGHTS, TUNE } from './data';
 import type { BehaviourId, EnemyId } from './data';
 import { FLOOR, THICKET, WALL, centre, distances, generate, idx, los, moveCircle, randomFloor, rayWall, tileAt, tx } from './level';
 import type { Room } from './level';
@@ -27,7 +27,7 @@ export function newPlayer(c: Campaign): Player {
     dodges: maxDodges, maxDodges, dodgeT: 0, ddx: 0, ddz: 0, invuln: 0, downs: 0, fireCd: 0, snared: 0, slowStill: 0,
     medkits: 2 + c.upgrades.belt, maxMedkits: 2 + c.upgrades.belt, ammo: 24 + c.upgrades.holster * 12,
     grafts: c.species.map(() => 0), graftSel: 0, graftCap: TUNE.graftCap + c.upgrades.satchel,
-    relicCharges: 2, salvage: 0, samples: 0, kills: 0, moving: 0, hurtT: 9, lowSaid: false,
+    relicCharges: 2, salvage: 0, samples: 0, kills: 0, moving: 0, hurtT: 9, lowSaid: false, inCloud: 0,
   };
 }
 
@@ -40,7 +40,7 @@ export function createWorld(camp: Campaign, depth: number, carry?: Player): Worl
   const w: World = {
     camp, level, depth, rng, time: 0, nextId: 1, player, enemies: [], plants: [], props: [], loot: [], projs: [], zones: [],
     fx: [], flow: new Int16Array(level.w * level.h), flowT: 0, explored: new Uint8Array(level.w * level.h), revealed: false,
-    hitstop: 0, still: 0, prompt: null, near: null, hover: null, outcome: null, liftT: -1, said: {}, boss: null, cause: '',
+    hitstop: 0, still: 0, prompt: null, near: null, hover: null, hoverE: null, outcome: null, liftT: -1, said: {}, boss: null, cause: '',
     wave: -1, waveT: 32, waveX: level.rooms[level.hatch].cx, waveZ: level.rooms[level.hatch].cz, breaches: [],
   };
   populate(w);
@@ -77,7 +77,7 @@ export function addPlant(w: World, sp: number, x: number, z: number): Plant {
 export function addEnemy(w: World, type: EnemyId, x: number, z: number, elite = false): Enemy {
   const d = ENEMIES[type];
   const tough = (1 + 0.2 * (w.depth - 1) + 0.12 * w.camp.pulse) * (elite ? 2.2 : 1);
-  const e: Enemy = { id: w.nextId++, type, x, z, r: d.r * (elite ? 1.25 : 1), hp: d.hp * tough, maxHp: d.hp * tough, state: 'idle', t: 0, face: range(w.rng, 0, 6.28), vx: 0, vz: 0, alert: 0, homeX: x, homeZ: z, cd: range(w.rng, 0, 1.5), flash: 0, frozen: false, slow: 1, dead: false, deadT: 0, tx: x, tz: z, phase: 0, wander: range(w.rng, 0, 4), elite };
+  const e: Enemy = { id: w.nextId++, type, x, z, r: d.r * (elite ? 1.25 : 1), hp: d.hp * tough, maxHp: d.hp * tough, state: 'idle', t: 0, face: range(w.rng, 0, 6.28), vx: 0, vz: 0, alert: 0, homeX: x, homeZ: z, cd: range(w.rng, 0, 1.5), flash: 0, frozen: false, slow: 1, dead: false, deadT: 0, tx: x, tz: z, phase: 0, wander: range(w.rng, 0, 4), elite, sx: 0, sz: 0, gait: range(w.rng, 0, 6), st: -1 };
   w.enemies.push(e);
   return e;
 }
@@ -178,6 +178,26 @@ function sayOnce(w: World, key: keyof typeof THOUGHTS): void {
   w.fx.push({ k: 'say', t: pick(w.rng, THOUGHTS[key]) });
 }
 
+/** First sight of a kind of creature: it gets a name and a line. */
+function meet(w: World, type: EnemyId): void {
+  if (w.camp.bestiary[type]) return;
+  w.camp.bestiary[type] = 1;
+  w.fx.push({ k: 'say', t: CREATURES[type].first });
+}
+
+/** Once it has hurt you, or died, the operative has its measure. */
+function measure(w: World, type: EnemyId): void {
+  if ((w.camp.bestiary[type] ?? 0) >= 2) return;
+  w.camp.bestiary[type] = 2;
+  w.fx.push({ k: 'say', t: `${ENEMIES[type].name || 'It'}: ${CREATURES[type].trick}`, tone: 'note' });
+}
+
+function tell(w: World, key: string, text: string): void {
+  if (w.camp.told[key]) return;
+  w.camp.told[key] = true;
+  w.fx.push({ k: 'say', t: text, tone: 'note' });
+}
+
 function wake(w: World, p: Plant, cause: 'light' | 'sound' | 'near' | 'hurt'): void {
   p.calm = 0;
   if (p.mood !== 'asleep' || p.dead) return;
@@ -215,7 +235,9 @@ export function hurtPlayer(w: World, amount: number, cause: string, fx = 0, fz =
   if (p.invuln > 0 || p.state === 'dead' || w.outcome) return false;
   const n = Math.max(1, Math.round(amount * (1 + 0.15 * (w.depth - 1) + 0.1 * w.camp.pulse)));
   p.hp -= n; p.invuln = TUNE.player.hurtInvuln; p.hurtT = 0; w.cause = cause;
-  w.fx.push({ k: 'hit', x: p.x, z: p.z, n, crit: false, who: 'player' }, { k: 'shake', n: 0.35 + n * 0.012 }, { k: 'sound', s: 'hurt', x: p.x, z: p.z });
+  w.fx.push({ k: 'hit', x: p.x, z: p.z, n, crit: false, who: 'player', label: cause.replace(/^(the|a) /, '') }, { k: 'shake', n: 0.35 + n * 0.012 }, { k: 'sound', s: 'hurt', x: p.x, z: p.z });
+  const by = (Object.keys(CREATURES) as EnemyId[]).find((t) => CREATURES[t].cause === cause);
+  if (by) measure(w, by);
   if (fx || fz) { const d = Math.hypot(p.x - fx, p.z - fz) || 1; p.vx += ((p.x - fx) / d) * 6; p.vz += ((p.z - fz) / d) * 6; }
   if (p.hp < p.maxHp * 0.3 && !p.lowSaid) { p.lowSaid = true; sayOnce(w, 'low'); }
   if (p.hp > 0) return true;
@@ -264,6 +286,7 @@ export function hurtEnemy(w: World, e: Enemy, amount: number, kx: number, kz: nu
   }
   if (e.hp > 0) return;
   e.dead = true; e.deadT = 0; w.player.kills++;
+  if (w.camp.bestiary[e.type] && e.type !== 'grazer') measure(w, e.type);
   w.fx.push({ k: 'gore', x: e.x, z: e.z, n: e.type === 'mite' ? 5 : 16 }, { k: 'sound', s: e.type === 'mite' ? 'pop' : 'kill', x: e.x, z: e.z });
   if (has(w.camp.gear.blade, 'leeching')) w.player.hp = Math.min(w.player.maxHp, w.player.hp + 3);
   if (e.type === 'grazer') { w.player.kills--; return; }
@@ -388,6 +411,13 @@ function strike(w: World): void {
   } else noise(w, p.x, p.z, TUNE.noise.swing * quiet, false);
 }
 
+/** A pistol round is a small hole in something with no organs. Only what is already about to burst minds. */
+function shootPlant(w: World, p: Plant, dmg: number): void {
+  if (w.camp.species[p.sp].behaviour === 'burst') { hurtPlant(w, p, dmg * 2); return; }
+  hurtPlant(w, p, dmg * 0.1);
+  sayOnce(w, 'bullets');
+}
+
 function fire(w: World): void {
   const p = w.player, gun = w.camp.gear.gun, g = GUNS[gun.base];
   if (p.ammo < g.use) { w.fx.push({ k: 'sound', s: 'click', x: p.x, z: p.z }); p.fireCd = 0.3; return; }
@@ -404,7 +434,7 @@ function fire(w: World): void {
     };
     const targets: { t: number; hit: () => void }[] = [];
     for (const e of w.enemies) { const t = e.dead ? -1 : along(e.x, e.z, e.r); if (t > 0) targets.push({ t, hit: () => hurtEnemy(w, e, dmg * range(w.rng, 0.9, 1.1), dx, dz, 5) }); }
-    for (const q of w.plants) { const t = q.dead ? -1 : along(q.x, q.z, q.r * 0.8); if (t > 0) targets.push({ t, hit: () => hurtPlant(w, q, dmg) }); }
+    for (const q of w.plants) { const t = q.dead ? -1 : along(q.x, q.z, q.r * 0.8); if (t > 0) targets.push({ t, hit: () => shootPlant(w, q, dmg) }); }
     for (const q of w.props) { const t = q.used || (q.kind !== 'urn' && q.kind !== 'crate') ? -1 : along(q.x, q.z, q.r); if (t > 0) targets.push({ t, hit: () => breakProp(w, q) }); }
     targets.sort((a2, b2) => a2.t - b2.t);
     const through = 1 + (has(gun, 'piercing') ? 1 : 0);
@@ -472,21 +502,28 @@ function useRelic(w: World): void {
 }
 
 function collect(w: World, l: Loot): void {
-  const p = w.player;
-  let ok = true;
-  if (l.kind === 'salvage') p.salvage += l.n;
-  else if (l.kind === 'ammo') p.ammo += l.n;
-  else if (l.kind === 'cell') p.cell = Math.min(p.maxCell, p.cell + l.n);
-  else if (l.kind === 'medkit') { if (p.medkits < p.maxMedkits) p.medkits++; else ok = false; }
-  else if (l.kind === 'graft') { if (p.grafts[l.n] < p.graftCap) { p.grafts[l.n]++; nextGraft(w, 0); } else ok = false; }
-  else if (l.kind === 'sample') {
-    const k = w.camp.guide[l.n];
+  const p = w.player, c = w.camp;
+  let text = '', colour = '#cdd6d9';
+  if (l.kind === 'salvage') { p.salvage += l.n; text = `+${l.n} salvage`; colour = '#f0bf2c'; tell(w, 'salvage', PICKUPS.salvage); }
+  else if (l.kind === 'ammo') { p.ammo += l.n; text = `+${l.n} rounds`; colour = '#d9c98a'; tell(w, 'ammo', PICKUPS.ammo); }
+  else if (l.kind === 'cell') { p.cell = Math.min(p.maxCell, p.cell + l.n); text = 'Suit cell'; colour = '#fff1dc'; tell(w, 'cell', PICKUPS.cell); }
+  else if (l.kind === 'medkit') {
+    if (p.medkits >= p.maxMedkits) { l.t = -2; w.fx.push({ k: 'text', x: l.x, z: l.z, t: 'Medkit belt full', c: '#7c8d94' }); return; }
+    p.medkits++; text = 'Medkit'; colour = '#f3d27a'; tell(w, 'medkit', PICKUPS.medkit);
+  } else if (l.kind === 'graft') {
+    const g = BEHAVIOURS[c.species[l.n].behaviour].graft!;
+    if (p.grafts[l.n] >= p.graftCap) { l.t = -2; w.fx.push({ k: 'text', x: l.x, z: l.z, t: `No room for another ${g.name.toLowerCase()}`, c: '#7c8d94' }); return; }
+    p.grafts[l.n]++; nextGraft(w, 0); text = g.name; colour = '#37d3bf';
+    tell(w, `graft${l.n}`, `A ${g.name.toLowerCase()}, cut from the ${speciesName(c, l.n)} and still twitching. ${g.use} Q to throw, Tab for the next.`);
+  } else if (l.kind === 'sample') {
+    const k = c.guide[l.n];
     p.samples++; k.samples++;
-    if (k.samples >= 2 && !k.behaviour) { k.sense = k.behaviour = true; w.fx.push({ k: 'say', t: `Two samples of the ${speciesName(w.camp, l.n)}, and the suit has it worked out. ${BEHAVIOURS[w.camp.species[l.n].behaviour].does}`, tone: 'note' }); }
+    text = `Sample: ${speciesName(c, l.n)}${k.behaviour ? '' : ` (${Math.min(2, k.samples)} of 2)`}`; colour = '#37d3bf';
+    tell(w, 'sample', PICKUPS.sample);
+    if (k.samples >= 2 && !k.behaviour) { k.sense = k.behaviour = true; w.fx.push({ k: 'say', t: `Two samples of the ${speciesName(c, l.n)}, and the suit has it worked out. ${BEHAVIOURS[c.species[l.n].behaviour].does}`, tone: 'note' }); }
   }
-  if (!ok) return;
   l.gone = true;
-  w.fx.push({ k: 'sound', s: l.kind === 'salvage' ? 'coin' : 'pickup', x: l.x, z: l.z });
+  w.fx.push({ k: 'sound', s: l.kind === 'salvage' ? 'coin' : 'pickup', x: l.x, z: l.z }, { k: 'text', x: p.x, z: p.z, t: text, c: colour });
 }
 
 function interact(w: World, press: boolean): void {
@@ -567,7 +604,7 @@ function refit(w: World): void {
 function stepPlayer(w: World, input: Input, dt: number): void {
   const p = w.player, P = TUNE.player;
   if (p.state === 'dead') return;
-  p.invuln -= dt; p.fireCd -= dt; p.snared -= dt; p.hurtT += dt; p.comboT -= dt;
+  p.invuln -= dt; p.fireCd -= dt; p.snared -= dt; p.hurtT += dt; p.comboT -= dt; p.inCloud -= dt;
   if (p.comboT < 0 && p.state === 'free') p.combo = 0;
   p.face = Math.atan2(input.aimZ - p.z, input.aimX - p.x);
   if (p.dodges < p.maxDodges) { p.dodgeT += dt; if (p.dodgeT > P.dodgeRegen) { p.dodgeT = 0; p.dodges++; } }
@@ -581,7 +618,7 @@ function stepPlayer(w: World, input: Input, dt: number): void {
   else p.cell = Math.min(p.maxCell, p.cell + TUNE.torch.recharge * dt);
 
   if (input.medkit && p.medkits > 0 && p.hp < p.maxHp) { p.medkits--; p.hp = Math.min(p.maxHp, p.hp + TUNE.medkit); w.fx.push({ k: 'sound', s: 'medkit', x: p.x, z: p.z }, { k: 'spark', x: p.x, z: p.z, c: YELLOW, n: 12 }); }
-  if (input.cycle) nextGraft(w, input.cycle);
+  if (input.cycle) { const was = p.graftSel; nextGraft(w, input.cycle); const g = BEHAVIOURS[w.camp.species[p.graftSel].behaviour].graft; if (was !== p.graftSel && g) w.fx.push({ k: 'text', x: p.x, z: p.z, t: `${g.name}: ${g.use}`, c: '#37d3bf' }); }
   if (input.graft) throwGraft(w, input);
   if (input.relic) useRelic(w);
 
@@ -737,9 +774,23 @@ function steer(w: World, e: Enemy, tx2: number, tz2: number, speed: number, dt: 
   }
   const d = dist(gx, gz, e.x, e.z);
   if (d < 0.05) return;
-  e.face = Math.atan2(gz - e.z, gx - e.x);
-  moveCircle(l, e, ((gx - e.x) / d) * speed * dt, ((gz - e.z) / d) * speed * dt, e.r, true);
+  // Each kind has its own way of going: mites scuttle in bursts, a skulker bounds, a husk heaves.
+  let sp = speed;
+  if (e.type === 'mite') sp *= Math.sin(w.time * 6 + e.id * 1.7) > -0.4 ? 1.25 : 0.12;
+  if (e.type === 'skulker') sp *= 0.78 + 0.4 * Math.max(0, Math.sin(e.gait * 2.6));
+  if (e.type === 'husk') sp *= 0.5 + 0.8 * Math.abs(Math.sin(e.gait * 1.6));
+  const k = Math.min(1, ACCEL[e.type] * dt);
+  e.sx += (((gx - e.x) / d) * sp - e.sx) * k; e.sz += (((gz - e.z) / d) * sp - e.sz) * k;
+  e.st = w.time;
+  const v = Math.hypot(e.sx, e.sz);
+  moveCircle(l, e, e.sx * dt, e.sz * dt, e.r, true);
+  e.gait += v * dt;
+  if (v > 0.3) e.face += angDiff(Math.atan2(e.sz, e.sx), e.face) * Math.min(1, TURN[e.type] * dt);
 }
+
+/** How quickly each creature gets up to speed and comes round. Weight, in two numbers. */
+const ACCEL: Record<EnemyId, number> = { mite: 18, skulker: 7, spitter: 5, husk: 3, unlit: 60, tender: 3, grazer: 4, warden: 4 };
+const TURN: Record<EnemyId, number> = { mite: 16, skulker: 8, spitter: 6, husk: 3.5, unlit: 60, tender: 3, grazer: 5, warden: 4 };
 
 function stepEnemies(w: World, dt: number): void {
   const pl = w.player, alive = pl.state !== 'dead', l = w.level;
@@ -751,9 +802,11 @@ function stepEnemies(w: World, dt: number): void {
     e.flash -= dt; e.cd -= dt; e.alert -= dt;
     const slow = e.slow; e.slow = Math.min(1, e.slow + dt * 0.7);
     if (Math.abs(e.vx) + Math.abs(e.vz) > 0.05) { moveCircle(l, e, e.vx * dt, e.vz * dt, e.r, true); e.vx *= 1 - Math.min(1, 8 * dt); e.vz *= 1 - Math.min(1, 8 * dt); }
+    if (w.time - e.st > 0.04) { e.sx *= 1 - Math.min(1, 7 * dt); e.sz *= 1 - Math.min(1, 7 * dt); }
     const dp = dist(e.x, e.z, pl.x, pl.z);
     if (dp > 40 && e.type !== 'tender') continue;
     const sees = alive && dp < d.sight * (pl.torch ? 1.7 : 0.75) && los(l, e.x, e.z, pl.x, pl.z);
+    if (sees && dp < 13 && e.type !== 'unlit') meet(w, e.type);
     if (sees) { if (e.alert <= 0 && (e.type === 'skulker' || e.type === 'husk' || e.type === 'spitter')) w.fx.push({ k: 'sound', s: 'growl', x: e.x, z: e.z }); e.alert = 6; e.tx = pl.x; e.tz = pl.z; }
     const speed = d.speed * slow * (e.elite ? 1.1 : 1);
     const lured = decoy && e.type !== 'unlit' && e.type !== 'tender' && dist(e.x, e.z, decoy.x, decoy.z) < 18;
@@ -763,7 +816,7 @@ function stepEnemies(w: World, dt: number): void {
 
     if (e.type === 'unlit') {
       e.frozen = lit(w, e.x, e.z) || lanterns.some((p) => dist(p.x, p.z, e.x, e.z) < 5);
-      if (e.frozen && dp < 13 && pl.torch) sayOnce(w, 'unlit');
+      if (e.frozen && dp < 13 && pl.torch) meet(w, 'unlit');
       if (e.state === 'recover') { e.t -= dt; if (e.t <= 0) e.state = 'chase'; continue; }
       if (e.frozen || !alive || dp > 26) continue;
       steer(w, e, pl.x, pl.z, speed, dt);
@@ -774,7 +827,7 @@ function stepEnemies(w: World, dt: number): void {
     if (e.type === 'tender') { stepTender(w, e, dt, dp); continue; }
 
     if (e.type === 'grazer') {
-      if (alive && dp < 4.5 && sees) { e.alert = 2.5; e.tx = pl.x; e.tz = pl.z; sayOnce(w, 'grazer'); }
+      if (alive && dp < 4.5 && sees) { e.alert = 2.5; e.tx = pl.x; e.tz = pl.z; }
       if (e.alert > 0) { // scatter, away from whatever startled it
         const a = Math.atan2(e.z - e.tz, e.x - e.tx) + Math.sin(w.time * 9 + e.id) * 0.8;
         e.face = a;
@@ -796,7 +849,6 @@ function stepEnemies(w: World, dt: number): void {
 
     if (e.type === 'warden') {
       if (e.phase === 0) { // gardening: walk the rows, settle what is restless
-        if (dp < 11 && sees) sayOnce(w, 'garden');
         e.wander -= dt;
         const rows = w.plants.filter((q) => !q.dead && dist(q.x, q.z, e.homeX, e.homeZ) < 12);
         if (e.wander < 0 && rows.length) { e.wander = range(w.rng, 3, 5); const q = pick(w.rng, rows); e.tx = q.x; e.tz = q.z + 1.1; if (q.mood === 'awake' && q.fuse < 0) q.mood = 'asleep'; q.hp = Math.min(26 * q.scale, q.hp + 10); }
@@ -952,6 +1004,7 @@ function stepZones(w: World, dt: number): void {
     if (z.kind === 'cloud') {
       const d = dist(z.x, z.z, pl.x, pl.z);
       if (d > 0.3 && d < 14) { z.x += ((pl.x - z.x) / d) * 1.5 * dt; z.z += ((pl.z - z.z) / d) * 1.5 * dt; }
+      if (d < z.r) pl.inCloud = 0.4;
       if (tick && d < z.r && pl.state !== 'dead') { pl.hp -= (has(w.camp.gear.suit, 'sealed') ? 0.8 : 2.4) * (1 + 0.15 * (w.depth - 1)); pl.hurtT = 0; w.cause = 'spores in the lungs'; if (pl.hp <= 0) { pl.hp = 1; hurtPlayer(w, 5, 'spores in the lungs'); } }
     }
     if (!tick) continue;
@@ -1009,8 +1062,11 @@ export function step(w: World, input: Input, dt: number): void {
   stepPlants(w, dt * slow);
   stepEnemies(w, dt * slow);
   stepZones(w, dt * slow);
+  w.hoverE = null;
+  let bestE = 1.5;
+  for (const e of w.enemies) { const d = dist(e.x, e.z, input.aimX, input.aimZ) - e.r; if (!e.dead && d < bestE && w.camp.bestiary[e.type]) { bestE = d; w.hoverE = e; } }
   w.hover = null;
-  let best = 1.4;
+  let best = w.hoverE ? 0 : 1.4;
   for (const p of w.plants) { const d = dist(p.x, p.z, input.aimX, input.aimZ); if (!p.dead && d < best) { best = d; w.hover = p; } }
   for (const p of w.plants) if (!p.dead && !w.camp.guide[p.sp].seen && dist(p.x, p.z, w.player.x, w.player.z) < 9 && (lit(w, p.x, p.z) || dist(p.x, p.z, w.player.x, w.player.z) < 3)) w.camp.guide[p.sp].seen = true;
   if (w.loot.length > 40 || w.zones.length > 6 || w.projs.length > 6) { w.loot = w.loot.filter((l) => !l.gone); w.zones = w.zones.filter((z) => !z.gone); w.projs = w.projs.filter((p) => !p.gone); }

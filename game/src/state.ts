@@ -16,7 +16,7 @@ export interface Gear { blade: Item; gun: Item; suit: Item; relic: Relic | null 
 export interface Fallen { name: string; depth: number; gear: Gear }
 
 export interface Campaign {
-  version: 2; seed: number; day: number; growth: number; pulse: number; salvage: number;
+  version: 3; seed: number; day: number; growth: number; pulse: number; salvage: number;
   upgrades: Record<UpgradeId, number>;
   roster: { name: string; alive: boolean; runs: number; epitaph?: string }[];
   current: number;
@@ -24,13 +24,19 @@ export interface Campaign {
   relicDeal: { form: string; fn: RelicFn }[]; relicTaken: boolean[];
   deepest: number; gear: Gear; fallen: Fallen[];
   lore: number; night: string[]; over: EndKind | null;
+  /** 1: seen. 2: it has drawn blood, or died to you, and the operative has its measure. */
+  bestiary: Partial<Record<EnemyId, number>>;
+  /** Things already explained once. */
+  told: Record<string, boolean>;
 }
 
 export type Mood = 'asleep' | 'stir' | 'awake';
 export interface Plant { id: number; sp: number; x: number; z: number; r: number; scale: number; rot: number; hp: number; mood: Mood; t: number; lit: number; calm: number; cd: number; fuse: number; pool: number; spawned: number; dead: boolean; flash: number; wind: number; surge: number }
 
 export type EState = 'idle' | 'chase' | 'windup' | 'strike' | 'recover' | 'stagger';
-export interface Enemy { id: number; type: EnemyId; x: number; z: number; r: number; hp: number; maxHp: number; state: EState; t: number; face: number; vx: number; vz: number; alert: number; homeX: number; homeZ: number; cd: number; flash: number; frozen: boolean; slow: number; dead: boolean; deadT: number; tx: number; tz: number; phase: number; wander: number; elite: boolean }
+export interface Enemy { id: number; type: EnemyId; x: number; z: number; r: number; hp: number; maxHp: number; state: EState; t: number; face: number; vx: number; vz: number; alert: number; homeX: number; homeZ: number; cd: number; flash: number; frozen: boolean; slow: number; dead: boolean; deadT: number; tx: number; tz: number; phase: number; wander: number; elite: boolean;
+  /** Smoothed velocity, distance walked (drives the gait) and when it last chose to move. */
+  sx: number; sz: number; gait: number; st: number }
 
 export type PropKind = 'urn' | 'crate' | 'chest' | 'plinth' | 'lift' | 'hatch' | 'body' | 'glyph' | 'door';
 export interface Prop { id: number; kind: PropKind; x: number; z: number; r: number; hp: number; used: boolean; rot: number; data: number }
@@ -44,7 +50,8 @@ export interface Zone { id: number; kind: ZoneKind; x: number; z: number; r: num
 
 export type Fx =
   | { k: 'slash'; x: number; z: number; a: number; reach: number; arc: number; heavy: boolean }
-  | { k: 'hit'; x: number; z: number; n: number; crit: boolean; who: 'enemy' | 'plant' | 'player' }
+  | { k: 'hit'; x: number; z: number; n: number; crit: boolean; who: 'enemy' | 'plant' | 'player'; label?: string }
+  | { k: 'text'; x: number; z: number; t: string; c: string }
   | { k: 'shot'; x: number; z: number; x2: number; z2: number }
   | { k: 'ring'; x: number; z: number; r: number; t: number; c: number }
   | { k: 'burst'; x: number; z: number; r: number; c: number }
@@ -64,7 +71,7 @@ export interface Player {
   dodges: number; maxDodges: number; dodgeT: number; ddx: number; ddz: number;
   invuln: number; downs: number; fireCd: number; snared: number; slowStill: number;
   medkits: number; maxMedkits: number; ammo: number; grafts: number[]; graftSel: number; graftCap: number;
-  relicCharges: number; salvage: number; samples: number; kills: number; moving: number; hurtT: number; lowSaid: boolean;
+  relicCharges: number; salvage: number; samples: number; kills: number; moving: number; hurtT: number; lowSaid: boolean; inCloud: number;
 }
 
 export interface Input { mx: number; mz: number; aimX: number; aimZ: number; attack: boolean; fire: boolean; dodge: boolean; interact: boolean; graft: boolean; relic: boolean; torch: boolean; medkit: boolean; cycle: number }
@@ -73,7 +80,7 @@ export interface World {
   camp: Campaign; level: Level; depth: number; rng: RngHost; time: number; nextId: number;
   player: Player; enemies: Enemy[]; plants: Plant[]; props: Prop[]; loot: Loot[]; projs: Proj[]; zones: Zone[];
   fx: Fx[]; flow: Int16Array; flowT: number; explored: Uint8Array; revealed: boolean;
-  hitstop: number; still: number; prompt: string | null; near: Loot | Prop | null; hover: Plant | null;
+  hitstop: number; still: number; prompt: string | null; near: Loot | Prop | null; hover: Plant | null; hoverE: Enemy | null;
   outcome: null | 'extracted' | 'dead' | 'descend' | 'won'; liftT: number;
   /** The Pulse passing: a ring of light spreading from the way down. */
   wave: number; waveT: number; waveX: number; waveZ: number; breaches: { x: number; z: number }[]; said: Record<string, boolean>; boss: Enemy | null; cause: string;
@@ -131,24 +138,24 @@ export function newCampaign(seed: number): Campaign {
   const forms = shuffle(h, RELIC_FORMS);
   const fns = shuffle<RelicFn>(h, ['hush', 'lattice', 'still', 'tending', 'choir', 'memorywork']);
   return {
-    version: 2, seed, day: 1, growth: 12, pulse: 0, salvage: 0,
+    version: 3, seed, day: 1, growth: 12, pulse: 0, salvage: 0,
     upgrades: Object.fromEntries(UPGRADES.map((u) => [u.id, 0])) as Record<UpgradeId, number>,
     roster: shuffle(h, PEOPLE).slice(0, 8).map((name) => ({ name, alive: true, runs: 0 })),
     current: 0, species,
     guide: species.map(() => ({ seen: false, sense: false, behaviour: false, samples: 0 })),
     relicDeal: [0, 1, 2].map((i) => ({ form: forms[i], fn: fns[i] })), relicTaken: [false, false, false],
-    deepest: 1, gear: starterGear(), fallen: [], lore: 0, night: [], over: null,
+    deepest: 1, gear: starterGear(), fallen: [], lore: 0, night: [], over: null, bestiary: {}, told: {},
   };
 }
 
 export const starterGear = (): Gear => ({ blade: makeItem('blade', 0, 1, []), gun: makeItem('gun', 0, 1, []), suit: makeItem('suit', 0, 1, []), relic: null });
 export const speciesName = (c: Campaign, id: number): string => c.species[id].name;
 
-const SAVE = 'forgotten.game.v2';
+const SAVE = 'forgotten.game.v3';
 export function loadCampaign(): Campaign | null {
   try {
     const c = JSON.parse(localStorage.getItem(SAVE) ?? 'null') as Campaign | null;
-    return c && c.version === 2 ? c : null;
+    return c && c.version === 3 ? c : null;
   } catch { return null; }
 }
 export function saveCampaign(c: Campaign | null): void {

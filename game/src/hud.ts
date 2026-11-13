@@ -1,7 +1,8 @@
 // The HUD and the screens round the game: plain DOM over the canvas. It shows
 // only what the field guide has earned about a plant, never the species data.
 
-import { BEHAVIOURS, ENDINGS, LAYERS, RARITY_COLOUR, RELICS, TUNE, UPGRADES } from './data';
+import { BEHAVIOURS, CREATURES, ENDINGS, ENEMIES, LAYERS, RARITY_COLOUR, RELICS, TUNE, UPGRADES } from './data';
+import type { EnemyId } from './data';
 import type { EndKind } from './data';
 import { FLOOR, THICKET, WALL, idx, tx } from './level';
 import type { View } from './render';
@@ -31,6 +32,8 @@ export class Hud {
   private compare = el('div', 'compare');
   private boss = el('div', 'boss');
   private vignette = el('div', 'vignette');
+  private status = el('div', 'status');
+  private tagPool: HTMLElement[] = [];
   private map = document.createElement('canvas');
   private nums: HTMLElement[] = [];
   private labelPool: HTMLElement[] = [];
@@ -40,7 +43,7 @@ export class Hud {
   constructor(parent: HTMLElement, private act: Actions) {
     this.map.width = this.map.height = 168;
     this.map.className = 'map';
-    this.root.append(this.vignette, this.labels, this.where, this.map, this.boss, this.toasts, this.card, this.compare, this.prompt, this.bars, this.kit);
+    this.root.append(this.vignette, this.status, this.labels, this.where, this.map, this.boss, this.toasts, this.card, this.compare, this.prompt, this.bars, this.kit);
     parent.append(this.root, this.overlay);
     this.overlay.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest('[data-a]') as HTMLElement | null;
@@ -96,6 +99,8 @@ export class Hud {
           <div class="gear">${itemCard(g.blade, 'Blade')}${itemCard(g.gun, 'Gun')}${itemCard(g.suit, 'Suit')}${g.relic ? `<div class="item" style="--c:#f3fbff"><i>Relic</i><b>${g.relic.known ? RELICS[g.relic.fn].name : `A ${g.relic.form}`}</b><span>${g.relic.known ? RELICS[g.relic.fn].does : 'Nobody knows what it does.'}</span></div>` : ''}</div>
           <h4>Field guide</h4>
           <div class="guide">${c.species.map((s, i) => { const k = c.guide[i]; return k.seen ? `<div><b style="color:hsl(${s.hue} 45% 55%)">${esc(s.name)}</b><span>wakes to ${k.sense ? (s.sense === 'near' ? 'something close' : s.sense === 'light' ? 'torchlight' : 'noise') : '?'}</span><span>${k.behaviour ? BEHAVIOURS[s.behaviour].does : '?'}</span></div>` : '<div class="dim"><b>Not yet met</b></div>'; }).join('')}</div>
+          <h4>What lives down there</h4>
+          <div class="guide">${(Object.keys(c.bestiary) as EnemyId[]).map((t) => `<div><b>${ENEMIES[t].name || 'The unlit thing'}</b><span>${(c.bestiary[t] ?? 0) >= 2 ? CREATURES[t].trick : 'Seen. Not yet understood.'}</span></div>`).join('') || '<div class="dim"><b>Nothing met yet</b></div>'}</div>
           ${dead.length ? `<h4>The wall</h4>${dead.map((p) => `<p class="hint"><b>${esc(p.name)}</b> ${esc(p.epitaph ?? '')}</p>`).join('')}` : ''}
         </section>
       </div>
@@ -134,17 +139,21 @@ export class Hud {
   fx(fx: Fx[], view: View): void {
     for (const f of fx) {
       if (f.k === 'say') this.say(f.t, f.tone);
-      if (f.k !== 'hit' || f.who === 'plant') continue;
-      const s = view.project(f.x + (Math.random() - 0.5) * 0.6, 2, f.z);
+      if (f.k !== 'text' && (f.k !== 'hit' || f.who === 'plant')) continue;
+      const s = view.project(f.x + (Math.random() - 0.5) * 0.6, f.k === 'text' ? 2.6 + this.stack() : 2, f.z);
       const d = this.nums.find((n) => !n.isConnected) ?? el('span');
-      d.className = `num ${f.who}${f.crit ? ' crit' : ''}`;
-      d.textContent = String(f.n);
+      if (f.k === 'text') { d.className = 'num pick'; d.textContent = f.t; d.style.color = f.c; }
+      else { d.className = `num ${f.who}${f.crit ? ' crit' : ''}`; d.textContent = f.who === 'player' && f.label ? `−${f.n} ${f.label}` : String(f.n); d.style.color = ''; }
       d.style.left = `${s.x}px`; d.style.top = `${s.y}px`;
       if (!this.nums.includes(d)) this.nums.push(d);
       this.labels.append(d);
-      setTimeout(() => d.remove(), 650);
+      setTimeout(() => d.remove(), f.k === 'text' ? 1500 : f.who === 'player' ? 1100 : 650);
     }
   }
+
+  /** Pickups in quick succession stack upwards instead of landing on each other. */
+  private stackN = 0; private stackT = 0;
+  private stack(): number { const now = performance.now(); this.stackN = now - this.stackT < 500 ? this.stackN + 1 : 0; this.stackT = now; return (this.stackN % 5) * 0.55; }
 
   update(w: World, view: View): void {
     const p = w.player, c = w.camp, g = c.gear;
@@ -161,7 +170,7 @@ export class Hud {
       this.lastKit = kit;
       this.kit.innerHTML = `<div style="--c:${RARITY_COLOUR[g.blade.rarity]}"><i>LMB</i><b>${esc(g.blade.name)}</b></div>
         <div style="--c:${RARITY_COLOUR[g.gun.rarity]}"><i>RMB · ${p.ammo}</i><b>${esc(g.gun.name)}</b></div>
-        <div style="--c:#37d3bf"><i>Q · ${graft ? p.grafts[sp] : 0}</i><b>${graft ? graft.name : 'No grafts'}</b></div>
+        <div style="--c:#37d3bf" title="${graft ? graft.use : ''}"><i>Q · ${graft ? p.grafts[sp] : 0}${p.grafts.filter((n) => n > 0).length > 1 ? ' · Tab' : ''}</i><b>${graft ? graft.name : 'No grafts'}</b></div>
         <div style="--c:#f3fbff"><i>R · ${g.relic ? p.relicCharges : 0}</i><b>${g.relic ? (g.relic.known ? RELICS[g.relic.fn].name : `A ${g.relic.form}`) : 'No relic'}</b></div>
         <div><i>H</i><b>${p.medkits} medkit${p.medkits === 1 ? '' : 's'}</b></div>
         <div style="--c:#f0bf2c"><i>Salvage</i><b>${p.salvage}</b></div>`;
@@ -174,12 +183,36 @@ export class Hud {
     this.vignette.classList.toggle('dark', !p.torch);
     this.vignette.classList.toggle('still', w.still > 0);
 
+    const chips = [p.snared > 0 ? '<b class="bad">HELD</b> Space to tear free' : '', p.inCloud > 0 ? '<b class="bad">SPORES</b> get out of the cloud' : '', !p.torch && p.cell < TUNE.torch.relight ? '<b>TORCH DEAD</b> it recharges in the dark' : '', w.still > 0 ? '<b class="white">STILLNESS</b>' : ''].filter(Boolean).join('');
+    if (this.status.innerHTML !== chips) this.status.innerHTML = chips;
+
+    // creatures already met carry their name; what it does shows once you have its measure
+    let tags = 0;
+    for (const e of w.enemies) {
+      const known = c.bestiary[e.type];
+      if (e.dead || !known || e.type === 'tender' || e.type === 'unlit' || (e.type === 'mite' && e !== w.hoverE) || (e !== w.hoverE && (e.alert <= 0 || e.type === 'grazer')) || Math.hypot(e.x - p.x, e.z - p.z) > 11) continue;
+      const d = this.tagPool[tags] ?? (this.tagPool[tags] = el('span', 'tag'));
+      tags++;
+      const at = view.project(e.x, 1.9 + e.r * 1.6, e.z);
+      d.textContent = `${e.elite ? 'Old ' : ''}${ENEMIES[e.type].name}`.toUpperCase();
+      d.style.left = `${at.x}px`; d.style.top = `${at.y}px`;
+      if (!d.isConnected) this.labels.append(d);
+    }
+    for (let i = tags; i < this.tagPool.length; i++) this.tagPool[i].remove();
+
     const boss = w.boss;
     this.boss.style.display = boss && !boss.dead && boss.alert > 0 ? '' : 'none';
     if (boss) this.boss.innerHTML = `<b>THE TENDER</b><div class="bar"><i style="width:${Math.max(0, (boss.hp / boss.maxHp) * 100)}%"></i></div>`;
 
     // a plant under the cursor: what the guide knows, nothing more
-    const h = w.hover;
+    const he = w.hoverE;
+    if (he) {
+      const at = view.project(he.x, 2.2, he.z), known = c.bestiary[he.type] ?? 0;
+      this.card.style.display = '';
+      this.card.style.left = `${at.x + 22}px`; this.card.style.top = `${at.y}px`;
+      this.card.innerHTML = `<b>${ENEMIES[he.type].name || 'It has no name'}</b><span>${known >= 2 ? CREATURES[he.type].trick : 'You have not got its measure yet.'}</span>`;
+    }
+    const h = he ? null : w.hover;
     if (h) {
       const s = c.species[h.sp], k = c.guide[h.sp], at = view.project(h.x, 2.4, h.z);
       this.card.style.display = '';
@@ -187,7 +220,7 @@ export class Hud {
       this.card.innerHTML = k.seen
         ? `<b style="color:hsl(${s.hue} 45% 60%)">${esc(speciesName(c, h.sp))}</b><span class="${h.mood === 'asleep' ? '' : 'bad'}">${h.mood === 'asleep' ? 'Dormant' : 'Awake'}</span><span><i>Wakes to</i> ${k.sense ? (s.sense === 'near' ? 'something close' : s.sense === 'light' ? 'torchlight' : 'noise') : '?'}</span><span><i>Does</i> ${k.behaviour ? BEHAVIOURS[s.behaviour].does : '?'}</span>${k.behaviour && BEHAVIOURS[s.behaviour].graft ? `<span class="life">Cut it for a ${BEHAVIOURS[s.behaviour].graft!.name.toLowerCase()}</span>` : ''}`
         : '<b>Something growing</b><span>Not close enough to make out.</span>';
-    } else this.card.style.display = 'none';
+    } else if (!he) this.card.style.display = 'none';
 
     // loot worth stopping for gets a label; what is underfoot gets compared
     let n = 0;
