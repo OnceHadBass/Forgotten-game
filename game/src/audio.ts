@@ -57,6 +57,8 @@ export class Audio {
   private noise!: AudioBuffer;
   private voiceT = 0; private stepD = 0; private heartT = 0;
   muted = false;
+  volume = 0.55;
+  setVolume(v: number): void { this.volume = v; if (this.ctx) this.out.gain.value = v; }
 
   /** Browsers only allow sound after a click. */
   start(): void {
@@ -65,7 +67,7 @@ export class Audio {
     if (!Ctx) return;
     const ctx = (this.ctx = new Ctx());
     const comp = ctx.createDynamicsCompressor();
-    this.out = ctx.createGain(); this.out.gain.value = 0.55;
+    this.out = ctx.createGain(); this.out.gain.value = this.volume;
     this.out.connect(comp); comp.connect(ctx.destination);
     // a long stone room
     const len = ctx.sampleRate * 2.4, imp = ctx.createBuffer(2, len, ctx.sampleRate);

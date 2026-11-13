@@ -75,7 +75,7 @@ export const ENEMIES: Record<EnemyId, EnemyData> = {
   grazer: { name: 'Grazer', hp: 5, speed: 3.6, r: 0.22, dmg: 0, sight: 6, poise: 0, range: 0, windup: 0, recover: 0, loot: 0 },
   // A Warden construct. It gardens. It minds if you cut what it tends.
   warden: { name: 'Gardener', hp: 130, speed: 2.2, r: 0.6, dmg: 20, sight: 12, poise: 60, range: 9, windup: 0.7, recover: 1.1, loot: 1 },
-  tender: { name: 'The Tender', hp: 820, speed: 2.4, r: 1.3, dmg: 24, sight: 40, poise: 999, range: 14, windup: 1.0, recover: 1.0, loot: 1 },
+  tender: { name: 'The Tender', hp: 1500, speed: 2.4, r: 1.3, dmg: 24, sight: 40, poise: 999, range: 14, windup: 1.0, recover: 1.0, loot: 1 },
 };
 
 /** What the operative works out about a creature: on first sight, then once it has drawn blood or died. */
@@ -197,6 +197,7 @@ export const THOUGHTS = {
   grazer: ['Small lights, drifting between the plants. Feeding. They scatter when I move.'],
   eaten: ['It took one of the little lights out of the air. So that is what it does.'],
   bullets: ['The round went straight through it. It hardly noticed. It noticed me.'],
+  bait: ['The locker closed on my arm to the shoulder. It was never a locker. It was a mouth.'],
   choir: ['With the torch off and a foot on the mark, the creaks and clicks of the room fall into one chord. It holds for as long as I stand here.'],
   wheel: ['A wheel the height of the room, turning once in the time it takes to cross the floor. No dust on it. It has been doing this since before there were people.'],
   camp: ['A camp. Ours: the same suits, the same lockers, tally marks on the wall. They followed the signal too. Nobody told us.'],

@@ -78,7 +78,10 @@ const hud = new Hud(app, {
   unpause: () => { mode = 'play'; hud.show(true); },
   restart: () => { saveCampaign(null); camp = null; mode = 'title'; backdrop(); hud.title(null); },
   mute: () => { audio.muted = !audio.muted; },
+  settings: (volume, shake) => { audio.setVolume(volume * 1.0); view.shakeScale = shake; try { localStorage.setItem('forgotten.settings', JSON.stringify({ volume, shake })); } catch { /* no storage */ } },
+  quit: () => { if (world && mode === 'pause') { world.cause = 'the dark, alone'; world.player.state = 'dead'; world.outcome = 'dead'; mode = 'play'; hud.show(true); } },
 });
+try { const st = JSON.parse(localStorage.getItem('forgotten.settings') ?? 'null') as { volume: number; shake: number } | null; if (st) { hud.settings = st; audio.setVolume(st.volume); view.shakeScale = st.shake; } } catch { /* defaults */ }
 backdrop();
 hud.title(loadCampaign());
 
@@ -144,14 +147,14 @@ function frame(now: number): void {
     while (acc >= 1 / 60) {
       acc -= 1 / 60;
       input = input ?? readInput(w);
-      step(w, input, 1 / 60);
-      // pressed-once actions belong to the first step only
-      input = { ...input, dodge: false, interact: false, graft: false, relic: false, torch: false, medkit: false, cycle: 0 };
+      // pressed-once actions belong to the first step that actually runs (a hit-stop must not eat a dodge)
+      if (step(w, input, 1 / 60)) input = { ...input, dodge: false, interact: false, graft: false, relic: false, torch: false, medkit: false, cycle: 0 };
       if (w.fx.length) {
         for (const f of w.fx) if (f.k === 'sound') audio.at(w, f.s, f.x, f.z, f.v ?? 1);
         view.consume(w.fx, w); hud.fx(w.fx, view); w.fx.length = 0;
       }
     }
+    if (input) { if (input.dodge) once.add('Space'); if (input.interact) once.add('KeyE'); if (input.graft) once.add('KeyQ'); if (input.relic) once.add('KeyR'); if (input.torch) once.add('KeyF'); if (input.medkit) once.add('KeyH'); }
     audio.update(w, dt);
     hud.update(w, view);
     if (w.outcome) { fade.classList.toggle('on', ending > (w.outcome === 'dead' ? 1.6 : 0.05)); ending += dt; if (ending > (w.outcome === 'dead' ? 2.4 : w.outcome === 'descend' ? 0.5 : 1)) { finish(w); return; } }

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { ENEMIES, T } from './data';
 import { THICKET, distances, idx, los, tx } from './level';
 import { createWorld, step } from './sim';
-import { newCampaign } from './state';
+import { makeItem, newCampaign } from './state';
 import type { Input, World } from './state';
 
 function play(w: World, toHatch: Int16Array, i: number): Input {
@@ -25,6 +25,8 @@ function play(w: World, toHatch: Int16Array, i: number): Input {
     if (best > reach) { input.mx = dx; input.mz = dz; } else input.attack = true;
     if (best > 5 && p.ammo > 0 && i % 2 === 0) input.fire = true;
     if (threat && p.dodges > 0 && i % 6 === 0) { input.dodge = true; input.mx = -dz; input.mz = dx; }
+    // a ring on the floor means get out of it, not sidestep
+    if (threat && (threat.type === 'husk' || (threat.type === 'tender' && threat.phase === 3))) { const d = Math.hypot(threat.x - p.x, threat.z - p.z) || 1; input.mx = (p.x - threat.x) / d; input.mz = (p.z - threat.z) / d; input.attack = false; }
     if (p.hp < p.maxHp * 0.3 && p.medkits === 0) { input.mx = -dx; input.mz = -dz; input.attack = false; }
     return input;
   }
@@ -62,5 +64,24 @@ describe('balance', () => {
     console.log('cleared layer 1/2/3:', reach.slice(1).map((n) => `${n}/${N}`).join(' '), '| avg time', Math.round(runs.reduce((a, r) => a + r.time, 0) / N), 's | avg kills', Math.round(runs.reduce((a, r) => a + r.kills, 0) / N));
     console.log(runs.map((r) => `${r.depth}${r.dead ? 'x' : ''}[${r.hp.join(',')}]`).join(' '));
     expect(reach[1]).toBeGreaterThanOrEqual(N * 0.6);
+  });
+
+  it('the Tender can be beaten by a geared operative, and is not a pushover', () => {
+    let won = 0, time = 0;
+    const N = 10;
+    for (let s = 1; s <= N; s++) {
+      const c = newCampaign(s * 53);
+      c.upgrades.plating = 3; c.upgrades.belt = 2;
+      c.gear.blade = makeItem('blade', 1, 2, ['keen', 'swift']);
+      const w = createWorld(c, 4);
+      const door = w.props.find((q) => q.kind === 'door')!;
+      const to = distances(w.level, tx(door.x - 2), tx(door.z));
+      let i = 0;
+      for (; i < 60 * 300 && !w.outcome && !w.boss!.dead; i++) { step(w, play(w, to, i), 1 / 60); w.fx.length = 0; }
+      if (w.boss!.dead) { won++; time += i / 60; }
+    }
+    console.log(`Tender beaten ${won}/${N}${won ? `, in about ${Math.round(time / won)} s` : ''}`);
+    expect(won).toBeGreaterThan(0);
+    expect(won).toBeLessThan(N);
   });
 });

@@ -91,6 +91,7 @@ export class View {
   private nova: THREE.Mesh;
   private target = new THREE.Vector3();
   private shake = 0;
+  shakeScale = 1;
   private time = 0;
   // particles
   private N = 1100; private pPos = new Float32Array(this.N * 3); private pVel = new Float32Array(this.N * 3); private pCol = new Float32Array(this.N * 3);
@@ -99,7 +100,7 @@ export class View {
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -269,7 +270,7 @@ export class View {
 
   consume(fx: Fx[], w: World): void {
     for (const f of fx) {
-      if (f.k === 'shake') this.shake = Math.max(this.shake, f.n);
+      if (f.k === 'shake') this.shake = Math.max(this.shake, f.n * this.shakeScale);
       else if (f.k === 'ring') this.ring(f.x, f.z, f.r, f.t, this.colour(f.c), true);
       else if (f.k === 'burst') {
         const c = this.colour(f.c);

@@ -21,14 +21,16 @@ Keyboard and mouse. WASD to move, the mouse aims the torch, left click swings th
 - **The descent:** four generated layers (Threshold, Interior, Works, Vault). A layer's layout is fixed for a campaign. A hatch in the far room goes down; a lift beacon where you arrive takes you home with what you carry.
 - **The torch:** one real shadow-casting light. Walls between you and the camera sink. With it off you are harder to see.
 - **Plants:** eight species whose body, colour, glow, name and sense are dealt per campaign. They wake to light, noise or nearness, stir, then act: lash, grip and drain the cell, breathe clouds that follow you, scream, burst, spill mites, or (asleep) mend you and charge the cell. Creatures are hurt by them too.
-- **Knowledge:** hover a plant to see what the guide has earned about it. Watching it wake teaches its sense; watching it act teaches what it does; two samples teach both.
-- **Grafts:** cut down a plant you understand and it may leave a working piece: a decoy, a grenade, a snare patch, caltrops, a cloud, a heal, a flare.
-- **A ruin that gets on without you:** grazers drift between glowing plants and feed, and the plants that sense nearness take them out of the air, which teaches you what those plants do from a safe distance. One garden a layer is still tended by a Warden construct: rows of sleeping plants, harmless until you cut one. Every minute or so the Pulse passes as a wave of light from the direction of the way down. Daylight comes through the roof of the Threshold, and growth is thick under it.
-- **Knowing what you are looking at:** creatures get a name and a line on first sight, and a note on how to beat them once one has drawn blood or died; the notes are kept at base. Everything picked up says what it is, and explains itself the first time. The HUD names whatever just hurt you.
+- **Knowledge:** hover a plant to see what the guide has earned about it. Watching it wake teaches its sense; watching it act teaches what it does; two samples, or one sample and a few days in the lab, teach both.
+- **Grafts:** cut down a plant you understand and it may leave a working piece: a decoy, a grenade, a snare patch, caltrops, a cloud, a heal, a flare. The lab cultures more for the next descent.
 - **Guns are for flesh:** a round does a tenth of its damage to most plants (it still wakes them). Only something already about to burst minds being shot.
-- **Creatures:** mites in swarms, skulkers that lunge, spitters, husks that slam, a thing that only moves when unlit, and the Tender at the bottom.
-- **Loot:** blades, guns and suits with rarity and affixes, dropped with a beam and a label and compared when you stand over them. Urns and crates to smash. One relic a layer, in white light, with nothing to say what it does until you use it.
-- **The base:** between descents. Salvage buys upgrades. The growth advances every day; burning it back works and raises the Pulse. Eight operatives; a death leaves the gear below with the body for the next one to recover.
+- **Creatures:** mites in swarms, skulkers that lunge, spitters, husks that slam, a thing that only moves when unlit, and the Tender at the bottom. Each has its own gait and weight. They get a name and a line on first sight, and a note on how to beat them once one has drawn blood or died.
+- **A ruin that gets on without you:** grazers feed at glowing plants and are eaten by the ones that sense nearness. One garden a layer is still tended by a Warden construct, harmless until you cut what it tends. The Pulse passes as a wave of light from the way down. Daylight falls through the roof of the Threshold. A choir room, a wheel still turning, a locker that is not a locker.
+- **Loot:** blades, guns and suits with rarity and affixes, dropped with a beam and a label and compared when you stand over them. Urns and crates to smash. One relic a layer, in white light, with nothing to say what it does until you use it or the lab works it out. Everything picked up says what it is.
+- **The base:** six modules round Operations. The growth takes them one at a time and you lose what they did; lose enough and it reaches Operations. Everyone not sent down works: the lab, the wire, the infirmary, the workshop. The wire crew hold the growth better the more species you understand. Burning it back works and raises the Pulse. Operatives come home hurt and need days to mend.
+- **Hope:** no bar. Time wears it down, and so do names on the wall. Wonders seen below lift it, if the operative lives to tell them. Low hope means poorer work and, at the bottom, people walking out through the wire.
+- **Death:** eight operatives. A death leaves the gear below with the body for the next one to recover.
+- **Endings:** beat the Tender and choose what to do with the Vault. When an expedition ends, the next one finds its camp in the Threshold.
 
 ## Layout
 
@@ -36,15 +38,23 @@ Keyboard and mouse. WASD to move, the mouse aims the torch, left click swings th
 - `src/level.ts`: layer generation, collision, line of sight.
 - `src/sim.ts`: the simulation. Fixed 60 Hz step, seeded, no three.js. It queues `Fx` for the view and audio.
 - `src/state.ts`: types, the campaign, item rolling, the save.
+- `src/camp.ts`: the base between descents (modules, jobs, lab, wounds, hope). Pure and seeded.
 - `src/render.ts`, `src/models.ts`: the view. Reads the world, writes three.js.
 - `src/audio.ts`: synthesised sound recipes; the plants are the soundtrack.
 - `src/hud.ts`, `src/main.ts`: HUD, screens, input and the loop.
 
 `?debug` on the URL exposes `window.__game` (`world`, `camp`, `step(n, input)`, `hold()`).
 
+## Tests
+
+- `src/sim.test.ts`: every layer runs clean, a seed replays exactly, a death leaves the gear below.
+- `src/balance.test.ts`: a bot that fights, sidesteps wind-ups and heads for the hatch. With starter gear it clears layer one every time, layer two about half the time and layer three almost never; with good gear it beats the Tender about seven times in ten. Read its printed tallies when changing numbers.
+- `src/camp.test.ts`: the base falls in about a month if left alone and holds longer when tended.
+- `e2e/flow.mjs`: thirteen checks through the real page, from the first step to an ending and the next expedition.
+
 ## Not done
 
-- No touch controls: it needs a keyboard and mouse.
-- Balance has only been played by a bot and by scripted checks, never by a person.
-- The base is one screen: no jobs, no modules to lose, no hope. Those rules are prototyped in `../prototypes/campaign/`.
-- The Vault endings are three paragraphs of text after the Tender.
+- No touch or gamepad controls: it needs a keyboard and mouse.
+- Nobody has heard it. Every sound is synthesised and has only been checked for errors, never by ear.
+- Balance comes from bots and scripted checks. A person will find things they did not.
+- The three Vault endings are a choice and a paragraph each; nothing gates them.

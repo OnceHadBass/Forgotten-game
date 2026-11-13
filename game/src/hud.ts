@@ -14,7 +14,7 @@ import type { Campaign, Fx, World } from './state';
 const el = (tag: string, cls = '', html = ''): HTMLElement => { const e = document.createElement(tag); if (cls) e.className = cls; if (html) e.innerHTML = html; return e; };
 const esc = (s: string): string => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!);
 
-export interface Actions { begin: () => void; resume: () => void; descend: (depth: number) => void; buy: (id: string) => void; burn: () => void; who: (i: number) => void; job: (i: number, job: string) => void; reclaim: (id: string) => void; wait: () => void; ending: (k: EndKind) => void; unpause: () => void; restart: () => void; mute: () => void }
+export interface Actions { begin: () => void; resume: () => void; descend: (depth: number) => void; buy: (id: string) => void; burn: () => void; who: (i: number) => void; job: (i: number, job: string) => void; reclaim: (id: string) => void; wait: () => void; settings: (volume: number, shake: number) => void; quit: () => void; ending: (k: EndKind) => void; unpause: () => void; restart: () => void; mute: () => void }
 
 function itemCard(it: Item, label: string): string {
   return `<div class="item" style="--c:${RARITY_COLOUR[it.rarity]}"><i>${label} · ${rarityName(it)}</i><b>${esc(it.name)}</b>${itemLines(it).map((l) => `<span>${l}</span>`).join('')}</div>`;
@@ -39,6 +39,7 @@ export class Hud {
   private nums: HTMLElement[] = [];
   private labelPool: HTMLElement[] = [];
   private lastKit = '';
+  settings = { volume: 0.55, shake: 1 };
   private lastBars = '';
 
   constructor(parent: HTMLElement, private act: Actions) {
@@ -46,13 +47,14 @@ export class Hud {
     this.map.className = 'map';
     this.root.append(this.vignette, this.status, this.labels, this.where, this.map, this.boss, this.toasts, this.card, this.compare, this.prompt, this.bars, this.kit);
     parent.append(this.root, this.overlay);
+    this.overlay.addEventListener('input', (e) => { const t = e.target as HTMLInputElement; if (t.dataset.set) { this.settings[t.dataset.set as 'volume' | 'shake'] = +t.value / 100; act.settings(this.settings.volume, this.settings.shake); } });
     this.overlay.addEventListener('change', (e) => { const t = e.target as HTMLSelectElement; if (t.dataset.job) act.job(+t.dataset.job, t.value); });
     this.overlay.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest('[data-a]') as HTMLElement | null;
       if (!b || b.hasAttribute('disabled')) return;
       const [a, arg] = b.dataset.a!.split(':');
       if (a === 'begin') act.begin(); if (a === 'resume') act.resume(); if (a === 'descend') act.descend(+arg);
-      if (a === 'buy') act.buy(arg); if (a === 'burn') act.burn(); if (a === 'reclaim') act.reclaim(arg); if (a === 'wait') act.wait(); if (a === 'who') act.who(+arg);
+      if (a === 'buy') act.buy(arg); if (a === 'burn') act.burn(); if (a === 'reclaim') act.reclaim(arg); if (a === 'wait') act.wait(); if (a === 'quit') act.quit(); if (a === 'who') act.who(+arg);
       if (a === 'ending') act.ending(arg as EndKind); if (a === 'unpause') act.unpause(); if (a === 'restart') act.restart(); if (a === 'mute') act.mute();
     });
   }
@@ -74,7 +76,10 @@ export class Hud {
 
   pause(): void {
     this.overlay.classList.add('on');
-    this.overlay.innerHTML = `<div class="sheet"><h2>Paused</h2>${CONTROLS}<div class="row"><button class="btn go" data-a="unpause">Back to it</button><button class="btn" data-a="mute">Sound on / off</button></div></div>`;
+    this.overlay.classList.remove('clear');
+    this.overlay.innerHTML = `<div class="sheet"><h2>Paused</h2>${CONTROLS}
+      <div class="row"><label class="set">Volume <input type="range" id="set-volume" min="0" max="100" value="${Math.round(this.settings.volume * 100)}" data-set="volume"></label><label class="set">Screen shake <input type="range" id="set-shake" min="0" max="100" value="${Math.round(this.settings.shake * 100)}" data-set="shake"></label></div>
+      <div class="row"><button class="btn go" data-a="unpause">Back to it</button><button class="btn ghost" data-a="quit">Give up this descent (the operative is lost)</button></div></div>`;
   }
 
   base(c: Campaign): void {
@@ -128,7 +133,7 @@ export class Hud {
           ${dead.length ? `<h4>The wall</h4>${dead.map((p) => `<p class="hint"><b>${esc(p.name)}</b> ${esc(p.epitaph ?? '')}</p>`).join('')}` : ''}
         </section>
       </div>
-      <footer class="row"><button class="btn ghost" data-a="restart">Abandon expedition</button><span class="grow"></span><button class="btn" data-a="wait">Let a day pass</button>
+      <footer class="row"><button class="btn ghost" data-a="restart">Abandon expedition</button><span class="grow"></span>${fit ? '' : `<span class="hint">${esc(who.name)} is hurt. Choose someone else, or let a day pass.</span>`}<button class="btn" data-a="wait">Let a day pass</button>
         ${[1, 2, 3, 4].filter((d) => d <= c.deepest).map((d) => `<button class="btn ${d === c.deepest ? 'go' : ''}" data-a="descend:${d}" ${fit ? '' : 'disabled'}>Descend to ${LAYERS[d].name}</button>`).join('')}
       </footer>
     </div>`;

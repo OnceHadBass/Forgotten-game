@@ -169,6 +169,7 @@ function populate(w: World): void {
   if (depth === 2 && !camp.wonders.includes('choir')) piece('mark');
   if (depth === 3 && !camp.wonders.includes('wheel')) piece('wheel');
   if (depth === 1 && camp.prior && !camp.told.camp) piece('camp');
+  if (depth >= 2 && halls.length) { const p = spot(w, pick(h, halls), 1.2, 1); if (p) addProp(w, 'chest', p.x, p.z, 1); }
   for (const f of camp.fallen.filter((b) => b.depth === depth)) {
     const p = spot(w, pick(h, rooms), 1);
     if (p) addProp(w, 'body', p.x, p.z, camp.fallen.indexOf(f));
@@ -580,6 +581,16 @@ function interact(w: World, press: boolean): void {
   }
   if (n.kind === 'lift') { w.liftT = 7; w.fx.push({ k: 'say', t: 'The winch starts to grind. Everything that hears it is coming to look.', tone: 'note' }); }
   if (n.kind === 'hatch') { noise(w, n.x, n.z, 22); w.fx.push({ k: 'sound', s: 'hatch', x: n.x, z: n.z }); w.outcome = 'descend'; }
+  if (n.kind === 'chest' && n.data === 1) {
+    // Loot as bait: something has learned what the expedition's lockers look like.
+    n.data = 0;
+    sayOnce(w, 'bait');
+    p.snared = 2.2; p.cell = Math.max(0, p.cell - 20);
+    hurtPlayer(w, 22, 'a thing shaped like a locker', n.x, n.z);
+    noise(w, n.x, n.z, 20, false);
+    w.fx.push({ k: 'burst', x: n.x, z: n.z, r: 2.5, c: 300 }, { k: 'sound', s: 'grab', x: n.x, z: n.z });
+    return;
+  }
   if (n.kind === 'chest') { n.used = true; w.fx.push({ k: 'sound', s: 'equip', x: n.x, z: n.z }); drop(w, 'item', n.x, n.z, 1, { item: rollItem(w.rng, w.depth, 0.25) }); drop(w, 'medkit', n.x, n.z); spill(w, n.x, n.z, 2); }
   if (n.kind === 'plinth') {
     n.used = true; w.camp.relicTaken[w.depth - 1] = true; wonder(w, 'white');
@@ -981,8 +992,12 @@ function stepTender(w: World, e: Enemy, dt: number, dp: number): void {
     e.state = 'chase';
     if (dp > 5) steer(w, e, pl.x, pl.z, d.speed * (rage ? 1.4 : 1), dt);
     if (e.cd <= 0) {
-      e.phase = (e.phase + 1) % 3;
-      e.state = 'windup'; e.t = rage ? 0.75 : d.windup;
+      // Anything that stands under it gets stamped on; otherwise it works through its three.
+      e.wander = (e.wander + 1) % 3;
+      e.frozen = dp < 3.8 && !e.frozen; // never two stamps running
+      e.phase = e.frozen ? 3 : Math.floor(e.wander);
+      e.state = 'windup'; e.t = e.phase === 3 ? 0.7 : rage ? 0.75 : d.windup;
+      if (e.phase === 3) w.fx.push({ k: 'ring', x: e.x, z: e.z, r: 4.4, t: e.t, c: HARM });
       e.face = Math.atan2(pl.z - e.z, pl.x - e.x) - 0.9;
       w.fx.push({ k: 'sound', s: 'charge', x: e.x, z: e.z });
       if (e.phase === 2) w.fx.push({ k: 'ring', x: e.x, z: e.z, r: 2, t: e.t, c: WHITE });
@@ -991,6 +1006,12 @@ function stepTender(w: World, e: Enemy, dt: number, dp: number): void {
   }
   if (e.state === 'windup') {
     e.t -= dt;
+    if (e.t <= 0 && e.phase === 3) {
+      w.fx.push({ k: 'burst', x: e.x, z: e.z, r: 4.4, c: WHITE }, { k: 'shake', n: 0.8 }, { k: 'sound', s: 'slam', x: e.x, z: e.z });
+      if (dp < 4.6 && hurtPlayer(w, d.dmg, 'the Tender', e.x, e.z)) { pl.vx *= 2.4; pl.vz *= 2.4; }
+      e.state = 'chase'; e.cd = rage ? 0.5 : 0.9;
+      return;
+    }
     if (e.t <= 0) { e.state = 'strike'; e.t = e.phase === 2 ? 1.5 : 1.7; e.tx = 0; if (e.phase === 1) for (let i = 0; i < (rage ? 6 : 4); i++) { const a = range(w.rng, 0, 6.28); const m = addEnemy(w, 'mite', e.x + Math.cos(a) * 2, e.z + Math.sin(a) * 2); m.state = 'chase'; m.alert = 20; } }
     return;
   }
@@ -1008,7 +1029,7 @@ function stepTender(w: World, e: Enemy, dt: number, dp: number): void {
       e.tx += 11 * dt;
       if (dp >= before - 0.5 && dp <= e.tx + 0.5) hurtPlayer(w, d.dmg, 'the Tender', e.x, e.z);
     }
-    if (e.t <= 0) { e.state = 'chase'; e.cd = rage ? 1.1 : 1.9; }
+    if (e.t <= 0) { e.state = 'chase'; e.cd = rage ? 0.7 : 1.3; }
   }
 }
 
@@ -1071,8 +1092,9 @@ function explore(w: World): void {
   for (const q of w.breaches) if (dist(q.x, q.z, p.x, p.z) < 5) { sayOnce(w, 'breach'); wonder(w, 'sky'); }
 }
 
-export function step(w: World, input: Input, dt: number): void {
-  if (w.hitstop > 0) { w.hitstop -= dt; return; }
+/** Returns false while the world is frozen on a hit, so the caller can keep a key press for the next step. */
+export function step(w: World, input: Input, dt: number): boolean {
+  if (w.hitstop > 0) { w.hitstop -= dt; return false; }
   w.time += dt;
   stepPlayer(w, input, dt);
   w.still -= dt;
@@ -1098,6 +1120,7 @@ export function step(w: World, input: Input, dt: number): void {
   for (const p of w.plants) if (!p.dead && !w.camp.guide[p.sp].seen && dist(p.x, p.z, w.player.x, w.player.z) < 9 && (lit(w, p.x, p.z) || dist(p.x, p.z, w.player.x, w.player.z) < 3)) w.camp.guide[p.sp].seen = true;
   if (w.loot.length > 40 || w.zones.length > 6 || w.projs.length > 6) { w.loot = w.loot.filter((l) => !l.gone); w.zones = w.zones.filter((z) => !z.gone); w.projs = w.projs.filter((p) => !p.gone); }
   if (w.enemies.length > 90) w.enemies = w.enemies.filter((e) => !e.dead || e.deadT < 3);
+  return true;
 }
 
 /** What the campaign keeps when a descent ends. */
