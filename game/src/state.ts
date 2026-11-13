@@ -77,7 +77,7 @@ export interface Player {
   dodges: number; maxDodges: number; dodgeT: number; ddx: number; ddz: number;
   invuln: number; downs: number; fireCd: number; snared: number; slowStill: number;
   medkits: number; maxMedkits: number; ammo: number; grafts: number[]; graftSel: number; graftCap: number;
-  relicCharges: number; salvage: number; samples: number; kills: number; moving: number; hurtT: number; lowSaid: boolean; inCloud: number;
+  relicCharges: number; salvage: number; samples: number; kills: number; moving: number; mdir: number; hurtT: number; lowSaid: boolean; inCloud: number;
 }
 
 export interface Input { mx: number; mz: number; aimX: number; aimZ: number; attack: boolean; fire: boolean; dodge: boolean; interact: boolean; graft: boolean; relic: boolean; torch: boolean; medkit: boolean; cycle: number }

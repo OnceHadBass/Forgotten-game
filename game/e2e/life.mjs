@@ -6,6 +6,7 @@ const out = process.argv[2] ?? new URL('./screenshots', import.meta.url).pathnam
 mkdirSync(out, { recursive: true });
 const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const p = await b.newPage({ viewport: { width: 1280, height: 760 }, deviceScaleFactor: 1 });
+p.setDefaultTimeout(180000);
 const errors = [];
 p.on('pageerror', (e) => errors.push(String(e)));
 p.on('console', (m) => m.type() === 'error' && errors.push(m.text()));

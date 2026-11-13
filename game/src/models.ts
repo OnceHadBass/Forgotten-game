@@ -3,7 +3,6 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import type { EnemyId } from './data';
 import { fork, range } from './rng';
 import type { RngHost } from './rng';
 import type { Species } from './state';
@@ -19,11 +18,54 @@ function part(g: THREE.BufferGeometry, pos: [number, number, number], rot: [numb
   const c = new Float32Array(p.count * 3);
   for (let i = 0; i < p.count; i++) colour(p.getY(i), i).toArray(c, i * 3);
   out.setAttribute('color', new THREE.BufferAttribute(c, 3));
-  out.deleteAttribute('uv');
   return out;
 }
 
 const CONE = new THREE.ConeGeometry(1, 1, 5).translate(0, 0.5, 0);
+
+/**
+ * One leaf: a strip that rises, bends over under its own weight, swells and
+ * comes to a point, folded along a midrib so light catches each half differently.
+ */
+export function bladeGeo(len: number, width: number, bend: number, n = 6): THREE.BufferGeometry {
+  const pos: number[] = [], uv: number[] = [], index: number[] = [];
+  let x = 0, y = 0;
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, a = bend * Math.max(0, (i - 0.5) / n) * t;
+    if (i) { x += Math.sin(a) * (len / n); y += Math.cos(a) * (len / n); }
+    const half = width * (Math.sin(Math.PI * Math.pow(t, 0.62)) * 0.92 + 0.12 * (1 - t)) * (i === n ? 0 : 1);
+    const fold = half * 0.38;
+    pos.push(x, y, -half, x - Math.cos(a) * fold, y + Math.sin(a) * fold, 0, x, y, half);
+    uv.push(0, t, 0.5, t, 1, t);
+    if (i < n) { const b = i * 3; index.push(b, b + 1, b + 4, b, b + 4, b + 3, b + 1, b + 2, b + 5, b + 1, b + 5, b + 4); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(index);
+  g.computeVertexNormals();
+  return g;
+}
+
+/** Veins and a darker margin, laid over whatever colour the leaf was dealt. */
+export function leafTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 256;
+  const g = c.getContext('2d')!;
+  const grad = g.createLinearGradient(0, 0, 128, 0);
+  grad.addColorStop(0, '#8a8a8a'); grad.addColorStop(0.2, '#d8d8d8'); grad.addColorStop(0.5, '#f4f4f4'); grad.addColorStop(0.8, '#d8d8d8'); grad.addColorStop(1, '#8a8a8a');
+  g.fillStyle = grad; g.fillRect(0, 0, 128, 256);
+  g.strokeStyle = 'rgba(255,255,255,0.9)'; g.lineWidth = 3;
+  g.beginPath(); g.moveTo(64, 0); g.lineTo(64, 256); g.stroke();
+  g.strokeStyle = 'rgba(40,40,40,0.35)'; g.lineWidth = 1.6;
+  for (let y = 8; y < 256; y += 15) { g.beginPath(); g.moveTo(64, y + 14); g.quadraticCurveTo(40, y + 4, 6, y - 6); g.moveTo(64, y + 14); g.quadraticCurveTo(88, y + 4, 122, y - 6); g.stroke(); }
+  let s = 13;
+  const r = (): number => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  for (let i = 0; i < 260; i++) { g.fillStyle = `rgba(30,30,30,${0.05 + r() * 0.12})`; g.beginPath(); g.arc(r() * 128, r() * 256, 1 + r() * 3.5, 0, 7); g.fill(); }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
 const BALL = new THREE.IcosahedronGeometry(1, 1);
 const TUBE = new THREE.CylinderGeometry(1, 1, 1, 5).translate(0, 0.5, 0);
 
@@ -48,8 +90,8 @@ export function plantGeometry(s: Species, seed: number, variant: number): PlantG
   const glowC = srgb(s.glow, 0.85, 0.62);
   const glowF = (): THREE.Color => glowC;
   const B: THREE.BufferGeometry[] = [], G: THREE.BufferGeometry[] = [];
-  const leaf = (x: number, z: number, len: number, w: number, tilt: number, yaw: number, flat = 0.28): void => {
-    B.push(part(CONE, [x, 0, z], [0, yaw, tilt], [w, len, w * flat], body));
+  const leaf = (x: number, z: number, len: number, w: number, tilt: number, yaw: number, droop = 1): void => {
+    B.push(part(bladeGeo(len, w, droop * (0.5 + j(0, 0.7))), [x, 0, z], [0, yaw, -tilt], [1, 1, 1], body));
   };
   const tip = (x: number, y: number, z: number, r: number): void => { G.push(part(BALL, [x, y, z], [0, 0, 0], [r, r, r], glowF)); };
 
@@ -58,40 +100,42 @@ export function plantGeometry(s: Species, seed: number, variant: number): PlantG
       top = 1.9;
       for (let i = 0; i < 10; i++) {
         const len = j(1.0, 1.9), tilt = j(-0.3, 0.3), yaw = j(0, 6.28), x = j(-0.25, 0.25), z = j(-0.25, 0.25);
-        leaf(x, z, len, 0.07, tilt, yaw, 0.6);
+        leaf(x, z, len, 0.07, Math.abs(tilt) * 0.6, yaw, 0.9);
         if (i % 3 === 0) tip(x - Math.sin(tilt) * Math.cos(yaw) * len, Math.cos(tilt) * len, z + Math.sin(tilt) * Math.sin(yaw) * len, 0.06);
       }
       break;
     case 'fan':
       top = 1.3;
-      for (let i = 0; i < 9; i++) { const yaw = (i / 9) * 6.28 + j(-0.2, 0.2); leaf(0, 0, j(1.0, 1.4), 0.26, j(0.5, 0.95), yaw); }
+      for (let i = 0; i < 9; i++) { const yaw = (i / 9) * 6.28 + j(-0.2, 0.2); leaf(0, 0, j(1.1, 1.6), 0.24, j(0.25, 0.6), yaw, 1.5); }
       tip(0, 0.25, 0, 0.13);
       break;
     case 'pods':
       top = 1.5;
       B.push(part(TUBE, [0, 0, 0], [0, 0, j(-0.12, 0.12)], [0.07, 1.4, 0.07], body));
+      for (let i = 0; i < 4; i++) leaf(0, 0, j(0.5, 0.8), 0.16, j(0.8, 1.1), i * 1.57 + j(-0.4, 0.4), 1.4);
       for (let i = 0; i < 5; i++) { const a = j(0, 6.28), y = 0.45 + i * 0.24, r = j(0.17, 0.25); const x = Math.cos(a) * 0.24, z = Math.sin(a) * 0.24; B.push(part(BALL, [x, y, z], [0, 0, 0], [r, r * 1.2, r], body)); tip(x * 1.5, y + 0.05, z * 1.5, 0.07); }
       break;
     case 'mat':
       top = 0.35;
-      for (let i = 0; i < 9; i++) { const a = j(0, 6.28), d = j(0, 0.7), r = j(0.3, 0.52); B.push(part(BALL, [Math.cos(a) * d, 0.06, Math.sin(a) * d], [0, j(0, 3), 0], [r, 0.16, r], body)); if (i % 2) tip(Math.cos(a) * d, 0.2, Math.sin(a) * d, 0.05); }
+      for (let i = 0; i < 9; i++) { const a = j(0, 6.28), d = j(0, 0.7), r = j(0.3, 0.52); B.push(part(BALL, [Math.cos(a) * d, 0.06, Math.sin(a) * d], [0, j(0, 3), 0], [r, 0.16, r], body)); if (i % 3 === 0) leaf(Math.cos(a) * d, Math.sin(a) * d, j(0.3, 0.5), 0.1, j(0.4, 0.9), j(0, 6.28), 1.5); if (i % 2) tip(Math.cos(a) * d, 0.2, Math.sin(a) * d, 0.05); }
       break;
     case 'spire':
       top = 2.0;
       for (let i = 0; i < 6; i++) B.push(part(CONE, [j(-0.03, 0.03), i * 0.3, j(-0.03, 0.03)], [0, j(0, 3), 0], [0.42 - i * 0.055, 0.62, 0.42 - i * 0.055], body));
       tip(0, 2.1, 0, 0.09);
+      for (let i = 0; i < 5; i++) leaf(0, 0, j(0.5, 0.75), 0.15, j(0.9, 1.2), i * 1.26 + j(-0.3, 0.3), 1.2);
       break;
     case 'pitcher': {
       top = 1.25;
       const pts = [[0.12, 0], [0.34, 0.25], [0.42, 0.6], [0.3, 0.95], [0.38, 1.15], [0.3, 1.2]].map(([x, y]) => new THREE.Vector2(x, y));
       B.push(part(new THREE.LatheGeometry(pts, 8), [0, 0, 0], [0, 0, 0], [1, 1, 1], body));
-      for (let i = 0; i < 4; i++) leaf(0, 0, j(0.5, 0.8), 0.2, j(1.0, 1.3), i * 1.57 + j(-0.3, 0.3));
+      for (let i = 0; i < 5; i++) leaf(0, 0, j(0.7, 1.0), 0.2, j(0.7, 1.0), i * 1.26 + j(-0.3, 0.3), 1.2);
       G.push(part(BALL, [0, 1.08, 0], [0, 0, 0], [0.26, 0.05, 0.26], glowF));
       break;
     }
     case 'crown':
       top = 1.0;
-      for (let i = 0; i < 12; i++) leaf(0, 0, j(0.8, 1.2), 0.17, j(0.85, 1.25), (i / 12) * 6.28 + j(-0.15, 0.15));
+      for (let i = 0; i < 13; i++) leaf(0, 0, j(0.8, 1.35), 0.17, j(0.3, 0.9), (i / 13) * 6.28 * 2 + j(-0.15, 0.15), 1.3);
       B.push(part(BALL, [0, 0.22, 0], [0, 0, 0], [0.26, 0.24, 0.26], body));
       tip(0, 0.42, 0, 0.12);
       break;
@@ -115,10 +159,10 @@ export function tuftGeometry(): THREE.BufferGeometry {
   const h: RngHost = { rng: 31 };
   const parts: THREE.BufferGeometry[] = [];
   const tmp = new THREE.Color();
-  for (let i = 0; i < 7; i++) {
-    const a = range(h, 0, 6.28), d = range(h, 0, 0.22), len = range(h, 0.3, 0.75);
+  for (let i = 0; i < 8; i++) {
+    const a = range(h, 0, 6.28), d = range(h, 0, 0.2), len = range(h, 0.3, 0.8);
     const c = srgb(range(h, 100, 150), 0.42, range(h, 0.13, 0.22)), dk = srgb(125, 0.4, 0.05);
-    parts.push(part(CONE, [Math.cos(a) * d, 0, Math.sin(a) * d], [0, range(h, 0, 6.28), range(h, -0.6, 0.6)], [range(h, 0.035, 0.07), len, 0.02], (y) => tmp.copy(dk).lerp(c, Math.min(1, y / 0.6))));
+    parts.push(part(bladeGeo(len, range(h, 0.03, 0.06), range(h, 0.4, 1.4), 4), [Math.cos(a) * d, 0, Math.sin(a) * d], [0, range(h, 0, 6.28), -range(h, 0.1, 0.6)], [1, 1, 1], (y) => tmp.copy(dk).lerp(c, Math.min(1, y / 0.6))));
   }
   const g = mergeGeometries(parts)!;
   g.computeVertexNormals();
@@ -129,10 +173,10 @@ export function thicketGeometry(): THREE.BufferGeometry {
   const h: RngHost = { rng: 77 };
   const parts: THREE.BufferGeometry[] = [];
   const tmp = new THREE.Color();
-  for (let i = 0; i < 26; i++) {
-    const a = range(h, 0, 6.28), d = range(h, 0, 0.95), len = range(h, 1.3, 2.5);
+  for (let i = 0; i < 30; i++) {
+    const a = range(h, 0, 6.28), d = range(h, 0, 0.95), len = range(h, 1.3, 2.6);
     const hue = range(h, 105, 150), c = srgb(hue, 0.4, range(h, 0.1, 0.19)), dk = srgb(hue, 0.4, 0.04);
-    parts.push(part(CONE, [Math.cos(a) * d, 0, Math.sin(a) * d], [0, range(h, 0, 6.28), range(h, -0.45, 0.45)], [range(h, 0.14, 0.3), len, 0.07], (y) => tmp.copy(dk).lerp(c, Math.min(1, y / 2))));
+    parts.push(part(bladeGeo(len, range(h, 0.12, 0.3), range(h, 0.3, 1.1)), [Math.cos(a) * d, 0, Math.sin(a) * d], [0, range(h, 0, 6.28), -range(h, 0.0, 0.5)], [1, 1, 1], (y) => tmp.copy(dk).lerp(c, Math.min(1, y / 2))));
   }
   const g = mergeGeometries(parts)!;
   g.computeVertexNormals();
@@ -144,99 +188,6 @@ export function thicketGeometry(): THREE.BufferGeometry {
 const mat = (color: number, extra: THREE.MeshStandardMaterialParameters = {}): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color, roughness: 0.75, metalness: 0.05, flatShading: true, ...extra });
 const mesh = (g: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z = 0): THREE.Mesh => { const o = new THREE.Mesh(g, m); o.position.set(x, y, z); o.castShadow = true; return o; };
 const box = (w: number, h: number, d: number): THREE.BoxGeometry => new THREE.BoxGeometry(w, h, d);
-
-export interface Rig { root: THREE.Group; body: THREE.Object3D; arm: THREE.Group; legL: THREE.Object3D; legR: THREE.Object3D; skin: THREE.MeshStandardMaterial }
-
-/** The operative: suit yellow, the only yellow in the ruin. */
-export function operative(): Rig {
-  const root = new THREE.Group(), body = new THREE.Group();
-  const suit = mat(0xe0ae1c, { emissive: 0x2a1e00, roughness: 0.6 });
-  const dark = mat(0x1d2124);
-  body.add(mesh(new THREE.CapsuleGeometry(0.3, 0.5, 3, 8), suit, 0, 1.0, 0));
-  const helm = mesh(new THREE.SphereGeometry(0.27, 10, 8), suit, 0.03, 1.62, 0);
-  body.add(helm, mesh(box(0.12, 0.1, 0.36), mat(0x0b0d0e, { roughness: 0.2, metalness: 0.6 }), 0.24, 1.63, 0));
-  body.add(mesh(box(0.26, 0.5, 0.42), dark, -0.3, 1.1, 0));
-  const legL = mesh(box(0.18, 0.55, 0.18), dark, 0, 0.3, 0.15), legR = mesh(box(0.18, 0.55, 0.18), dark, 0, 0.3, -0.15);
-  const arm = new THREE.Group();
-  arm.position.set(0.05, 1.25, -0.36);
-  arm.add(mesh(box(0.5, 0.13, 0.13), suit, 0.25, 0, 0), mesh(box(1.25, 0.03, 0.11), mat(0xb8c2c6, { roughness: 0.3, metalness: 0.7 }), 1.0, 0, 0));
-  const torch = mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.22, 6).rotateZ(Math.PI / 2), mat(0xfff1dc, { emissive: 0xfff1dc, emissiveIntensity: 1 }), 0.45, 1.25, 0.34);
-  body.add(arm, torch);
-  root.add(body, legL, legR);
-  return { root, body, arm, legL, legR, skin: suit };
-}
-
-export interface Creature { root: THREE.Group; body: THREE.Object3D; skin: THREE.MeshStandardMaterial; extra: THREE.Object3D[]; legs: THREE.Object3D[] }
-
-export function creature(type: EnemyId): Creature {
-  const root = new THREE.Group(), body = new THREE.Group(), extra: THREE.Object3D[] = [], legs: THREE.Object3D[] = [];
-  root.add(body);
-  let skin: THREE.MeshStandardMaterial;
-  const eye = (c: number): THREE.MeshBasicMaterial => new THREE.MeshBasicMaterial({ color: c });
-  const dot = (m: THREE.Material, r: number, x: number, y: number, z: number): THREE.Mesh => { const o = new THREE.Mesh(new THREE.SphereGeometry(r, 6, 5), m); o.position.set(x, y, z); return o; };
-  // A limb hangs from its top end, so turning it swings the foot.
-  const limb = (g: THREE.BufferGeometry, len: number, m: THREE.Material, x: number, y: number, z: number): THREE.Mesh => { const o = mesh(g.translate(0, -len / 2, 0), m, x, y, z); legs.push(o); return o; };
-  if (type === 'mite') {
-    skin = mat(0x39464b, { roughness: 0.4 });
-    body.add(mesh(new THREE.SphereGeometry(0.2, 6, 5).scale(1.3, 0.75, 1), skin, 0, 0.24, 0), mesh(new THREE.SphereGeometry(0.11, 5, 4), skin, 0.26, 0.24, 0), dot(eye(0xc9f7ee), 0.04, 0.34, 0.27, 0.05), dot(eye(0xc9f7ee), 0.04, 0.34, 0.27, -0.05));
-    for (let i = 0; i < 6; i++) { const l = limb(new THREE.CylinderGeometry(0.018, 0.012, 0.3, 3), 0.3, skin, 0.14 - (i >> 1) * 0.14, 0.22, i % 2 ? 0.14 : -0.14); l.rotation.x = i % 2 ? -0.9 : 0.9; l.userData.rx = l.rotation.x; body.add(l); }
-  } else if (type === 'skulker') {
-    skin = mat(0x46555b, { roughness: 0.55 });
-    const chest = mesh(new THREE.SphereGeometry(0.34, 7, 6).scale(1.25, 0.95, 0.9), skin, 0.3, 0.62, 0);
-    const hips = mesh(new THREE.SphereGeometry(0.27, 7, 6).scale(1.3, 0.9, 0.85), skin, -0.38, 0.56, 0);
-    const head = new THREE.Group();
-    head.position.set(0.68, 0.66, 0);
-    head.add(mesh(new THREE.ConeGeometry(0.2, 0.55, 5).rotateZ(-Math.PI / 2), skin, 0.2, 0, 0), dot(eye(0xd8fff6), 0.045, 0.2, 0.1, 0.11), dot(eye(0xd8fff6), 0.045, 0.2, 0.1, -0.11));
-    const tail = new THREE.Group();
-    tail.position.set(-0.68, 0.6, 0);
-    tail.add(mesh(new THREE.ConeGeometry(0.09, 1.0, 4).rotateZ(Math.PI / 2), skin, -0.5, 0, 0));
-    body.add(chest, hips, mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.6, 6).rotateZ(Math.PI / 2), skin, -0.04, 0.6, 0), head, tail);
-    for (const [x, z] of [[0.38, 0.27], [0.38, -0.27], [-0.42, 0.25], [-0.42, -0.25]]) body.add(limb(new THREE.CylinderGeometry(0.07, 0.04, 0.6, 4), 0.6, skin, x, 0.6, z));
-    extra.push(head, tail);
-  } else if (type === 'spitter') {
-    skin = mat(0x4a4656, { roughness: 0.5 });
-    const sac = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), new THREE.MeshBasicMaterial({ color: 0xc94fd0 }));
-    sac.position.set(0.12, 1.05, 0);
-    body.add(mesh(new THREE.SphereGeometry(0.42, 8, 6), skin, 0, 0.95, 0), sac);
-    for (let i = 0; i < 3; i++) { const l = limb(new THREE.CylinderGeometry(0.05, 0.025, 1.15, 4), 1.15, skin, Math.cos(i * 2.09) * 0.22, 1.0, Math.sin(i * 2.09) * 0.22); l.rotation.set(Math.sin(i * 2.09) * 0.5, 0, -Math.cos(i * 2.09) * 0.5); l.userData.rx = l.rotation.x; l.userData.rz = l.rotation.z; body.add(l); }
-    extra.push(sac);
-  } else if (type === 'husk') {
-    skin = mat(0x555c50, { roughness: 0.9 });
-    const moss = mat(0x1e3a26, { roughness: 1 });
-    const torso = new THREE.Group();
-    torso.add(mesh(new THREE.CapsuleGeometry(0.72, 0.7, 3, 8), skin, 0, 1.35, 0), mesh(new THREE.SphereGeometry(0.3, 7, 5), skin, 0.5, 2.05, 0));
-    for (let i = 0; i < 4; i++) torso.add(mesh(box(0.5, 0.14, 0.7), i % 2 ? moss : skin, -0.45 + i * 0.07, 1.2 + i * 0.3, 0));
-    const armL = limb(new THREE.CapsuleGeometry(0.2, 1.0, 2, 6), 1.4, skin, 0.2, 1.9, 0.9), armR = limb(new THREE.CapsuleGeometry(0.2, 1.0, 2, 6), 1.4, skin, 0.2, 1.9, -0.9);
-    legs.length = 0;
-    torso.add(armL, armR, dot(eye(0xff9c7a), 0.05, 0.75, 2.1, 0.1), dot(eye(0xff9c7a), 0.05, 0.75, 2.1, -0.1));
-    body.add(torso, limb(new THREE.CapsuleGeometry(0.24, 0.4, 2, 6), 0.85, skin, 0, 0.85, 0.36), limb(new THREE.CapsuleGeometry(0.24, 0.4, 2, 6), 0.85, skin, 0, 0.85, -0.36));
-    extra.push(armL, armR, torso);
-  } else if (type === 'unlit') {
-    // No eyes, no glow. It is only ever seen as a shape against lit stone.
-    skin = mat(0x040506, { roughness: 1 });
-    body.add(mesh(new THREE.CapsuleGeometry(0.17, 1.7, 3, 6), skin, 0, 1.1, 0), mesh(new THREE.SphereGeometry(0.16, 6, 5), skin, 0.05, 2.25, 0));
-    const armL = mesh(new THREE.CapsuleGeometry(0.05, 1.5, 2, 4), skin, 0.1, 1.2, 0.26), armR = mesh(new THREE.CapsuleGeometry(0.05, 1.5, 2, 4), skin, 0.1, 1.2, -0.26);
-    body.add(armL, armR);
-    extra.push(armL, armR);
-  } else if (type === 'grazer') {
-    // A small light that drifts between the plants. Teal, like everything alive.
-    skin = mat(0x2a3a3c, { roughness: 0.5 });
-    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.11, 6, 5), new THREE.MeshBasicMaterial({ color: 0x7ff0e0 }));
-    lamp.position.set(-0.12, 0, 0);
-    body.add(mesh(new THREE.OctahedronGeometry(0.13), skin, 0.05, 0, 0), lamp);
-    for (const z of [0.16, -0.16]) { const wing = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.12), new THREE.MeshBasicMaterial({ color: 0x9fb9b6, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false })); wing.position.set(0, 0.05, z); wing.rotation.x = Math.PI / 2; body.add(wing); extra.push(wing); }
-  } else {
-    skin = mat(0xdfe8ec, { emissive: 0x8fa3ad, emissiveIntensity: 0.6, roughness: 0.3 });
-    const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.6, 0), new THREE.MeshBasicMaterial({ color: 0xf3fbff }));
-    core.position.y = 2.1;
-    const ring = mesh(new THREE.TorusGeometry(1.1, 0.05, 5, 24).rotateX(Math.PI / 2), skin, 0, 2.1, 0);
-    body.add(core, ring);
-    for (let i = 0; i < 6; i++) { const a = (i / 6) * 6.28; const l = mesh(new THREE.CylinderGeometry(0.05, 0.03, 2.6, 4), skin, Math.cos(a) * 0.9, 1.15, Math.sin(a) * 0.9); l.rotation.set(Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5); body.add(l); }
-    extra.push(core, ring);
-    if (type === 'warden') root.scale.setScalar(0.48);
-  }
-  return { root, body, skin, extra, legs };
-}
 
 export function propMesh(kind: string): THREE.Object3D {
   const g = new THREE.Group();
@@ -260,6 +211,13 @@ export function propMesh(kind: string): THREE.Object3D {
     g.add(mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.12, 8), mat(0x33383b, { metalness: 0.5 }), 0, 0.06, 0));
     for (const a of [0.78, 2.35, 3.92, 5.5]) g.add(mesh(box(0.1, 2.6, 0.1), human, Math.cos(a) * 1.2, 1.3, Math.sin(a) * 1.2));
     const b = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 5), yellow); b.position.y = 2.7; b.name = 'lamp'; g.add(b);
+    // the cage that comes down the shaft when it is called
+    const cage = new THREE.Group(); cage.name = 'cage'; cage.visible = false;
+    cage.add(mesh(new THREE.CylinderGeometry(1.15, 1.15, 0.08, 8), human, 0, 0.16, 0), mesh(new THREE.CylinderGeometry(1.15, 1.15, 0.08, 8), human, 0, 2.5, 0));
+    for (let i = 0; i < 8; i++) cage.add(mesh(box(0.04, 2.3, 0.04), mat(0x6f6a55, { metalness: 0.5 }), Math.cos(i * 0.785) * 1.1, 1.33, Math.sin(i * 0.785) * 1.1));
+    cage.add(mesh(new THREE.CylinderGeometry(0.03, 0.03, 30, 5), mat(0x2a2d2f), 0, 17.5, 0));
+    const cl = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 5), yellow); cl.position.y = 2.35; cage.add(cl);
+    g.add(cage);
   } else if (kind === 'hatch') {
     g.add(mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.14, 8), mat(0x22272a, { metalness: 0.6, roughness: 0.4 }), 0, 0.07, 0));
     const r = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.04, 4, 20).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x8fa3ad })); r.position.y = 0.16; g.add(r);

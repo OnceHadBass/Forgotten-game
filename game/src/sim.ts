@@ -28,7 +28,7 @@ export function newPlayer(c: Campaign): Player {
     dodges: maxDodges, maxDodges, dodgeT: 0, ddx: 0, ddz: 0, invuln: 0, downs: 0, fireCd: 0, snared: 0, slowStill: 0,
     medkits: 2 + c.upgrades.belt, maxMedkits: 2 + c.upgrades.belt, ammo: 24 + c.upgrades.holster * 12,
     grafts: c.species.map(() => 0), graftSel: 0, graftCap: TUNE.graftCap + c.upgrades.satchel,
-    relicCharges: 2, salvage: 0, samples: 0, kills: 0, moving: 0, hurtT: 9, lowSaid: false, inCloud: 0,
+    relicCharges: 2, salvage: 0, samples: 0, kills: 0, moving: 0, mdir: 0, hurtT: 9, lowSaid: false, inCloud: 0,
   };
 }
 
@@ -684,6 +684,7 @@ function stepPlayer(w: World, input: Input, dt: number): void {
     else if (input.fire && p.fireCd <= 0) fire(w);
     if (ml > 0.1) moveCircle(w.level, p, (input.mx / ml) * speed * dt, (input.mz / ml) * speed * dt, P.r, false);
     p.moving = ml > 0.1 ? p.moving + dt * speed : 0;
+    if (ml > 0.1) p.mdir = Math.atan2(input.mz, input.mx);
   }
   // knockback
   if (Math.abs(p.vx) + Math.abs(p.vz) > 0.05) { moveCircle(w.level, p, p.vx * dt, p.vz * dt, P.r, false); p.vx *= 1 - Math.min(1, 9 * dt); p.vz *= 1 - Math.min(1, 9 * dt); }

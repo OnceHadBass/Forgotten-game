@@ -26,9 +26,7 @@ h4 { font: 500 11px var(--mono); letter-spacing: 0.16em; text-transform: upperca
 /* in play */
 .hud { position: fixed; inset: 0; pointer-events: none; }
 .hud > * { position: absolute; }
-.vignette { inset: 0; --hurt: 0; background: radial-gradient(ellipse at center, transparent 42%, rgba(0, 0, 0, 0.55) 100%), radial-gradient(ellipse at center, transparent 50%, rgba(210, 60, 40, calc(var(--hurt) * 0.75)) 100%); }
-.vignette.dark { background: radial-gradient(ellipse at center, transparent 22%, rgba(0, 0, 0, 0.78) 100%), radial-gradient(ellipse at center, transparent 50%, rgba(210, 60, 40, calc(var(--hurt) * 0.75)) 100%); }
-.vignette.still { box-shadow: inset 0 0 120px rgba(243, 251, 255, 0.35); }
+.vignette { display: none; }
 .where { top: 16px; left: 18px; display: flex; flex-direction: column; }
 .where b { font: 700 26px var(--display); letter-spacing: 0.06em; }
 .where span { color: var(--haze); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }

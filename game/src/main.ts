@@ -23,6 +23,9 @@ let world: World | null = null;
 let mode: 'title' | 'base' | 'play' | 'pause' | 'over' = 'title';
 let ending = 0;
 let demo = false;
+let frames = 0;
+const DEBUG = location.search.includes('debug');
+let slow = 0, measured = 0, held = false;
 const fade = document.createElement('div');
 fade.className = 'fade';
 app.append(fade);
@@ -75,13 +78,15 @@ const hud = new Hud(app, {
   wait: () => { if (camp) { passDay(camp, fork(camp.seed, 99, camp.day), null); toBase(); } },
   who: (i) => { if (camp?.roster[i].alive && camp.roster[i].wound <= 0) { camp.current = i; toBase(); } },
   ending: (k: EndKind) => { if (camp) { camp.over = k; toBase(); } },
-  unpause: () => { mode = 'play'; hud.show(true); },
+  unpause: () => { mode = 'play'; held = false; hud.show(true); },
   restart: () => { saveCampaign(null); camp = null; mode = 'title'; backdrop(); hud.title(null); },
   mute: () => { audio.muted = !audio.muted; },
+  quality: () => { view.setQuality(!view.low); measured = 999; hud.pause(view.low); },
   settings: (volume, shake) => { audio.setVolume(volume * 1.0); view.shakeScale = shake; try { localStorage.setItem('forgotten.settings', JSON.stringify({ volume, shake })); } catch { /* no storage */ } },
   quit: () => { if (world && mode === 'pause') { world.cause = 'the dark, alone'; world.player.state = 'dead'; world.outcome = 'dead'; mode = 'play'; hud.show(true); } },
 });
 try { const st = JSON.parse(localStorage.getItem('forgotten.settings') ?? 'null') as { volume: number; shake: number } | null; if (st) { hud.settings = st; audio.setVolume(st.volume); view.shakeScale = st.shake; } } catch { /* defaults */ }
+if (location.search.includes('low')) view.setQuality(true);
 backdrop();
 hud.title(loadCampaign());
 
@@ -89,8 +94,8 @@ addEventListener('keydown', (e) => {
   if (mode === 'play' && ['Tab', 'Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code)) e.preventDefault();
   if (!e.repeat) once.add(e.code);
   keys.add(e.code);
-  if (e.code === 'Escape' && mode === 'play') { mode = 'pause'; hud.pause(); }
-  else if (e.code === 'Escape' && mode === 'pause') { mode = 'play'; hud.show(true); }
+  if (e.code === 'Escape' && mode === 'play') { mode = 'pause'; hud.pause(view.low); }
+  else if (e.code === 'Escape' && mode === 'pause') { mode = 'play'; held = false; hud.show(true); }
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('blur', () => { keys.clear(); mouse.l = mouse.r = false; });
@@ -133,6 +138,8 @@ function frame(now: number): void {
   const w = world;
   if (!w) { view.renderer.clear(); return; }
   if (demo) {
+    // under test the software renderer cannot keep a title scene going and answer clicks
+    if (DEBUG && frames++ % 40) return;
     // the title scene plays itself: nobody is hurt, nothing is said
     const a = now / 4200, p = w.player;
     p.invuln = 9; p.cell = p.maxCell; p.hp = p.maxHp;
@@ -142,6 +149,8 @@ function frame(now: number): void {
     return;
   }
   if (mode === 'play') {
+    // a machine that cannot keep up gets the cheaper picture, once, and is told
+    if (!view.low && measured < 240) { measured++; slow += dt; if (measured === 240 && slow / 240 > 0.03) { view.setQuality(true); hud.say('The picture has been simplified to keep things moving. Change it back from the pause menu.', 'note'); } }
     acc += dt;
     let input: Input | null = null;
     while (acc >= 1 / 60) {
@@ -159,7 +168,8 @@ function frame(now: number): void {
     hud.update(w, view);
     if (w.outcome) { fade.classList.toggle('on', ending > (w.outcome === 'dead' ? 1.6 : 0.05)); ending += dt; if (ending > (w.outcome === 'dead' ? 2.4 : w.outcome === 'descend' ? 0.5 : 1)) { finish(w); return; } }
   }
-  view.update(w, mode === 'play' ? dt : 0);
+  // held for a test, the scene is only drawn when the test steps it
+  if (!(DEBUG && held)) view.update(w, mode === 'play' ? dt : 0);
 }
 requestAnimationFrame(frame);
 
@@ -168,6 +178,6 @@ if (location.search.includes('debug')) {
   (window as unknown as Record<string, unknown>).__game = {
     get world() { return world; }, get camp() { return camp; }, view, audio,
     step: (n: number, input: Partial<Input> = {}) => { const w = world!; for (let i = 0; i < n; i++) { step(w, { mx: 0, mz: 0, aimX: w.player.x + 1, aimZ: w.player.z, attack: false, fire: false, dodge: false, interact: false, graft: false, relic: false, torch: false, medkit: false, cycle: 0, ...input }, 1 / 60); view.consume(w.fx, w); hud.fx(w.fx, view); w.fx.length = 0; } hud.update(w, view); view.update(w, n / 60); },
-    hold: () => { mode = 'pause'; },
+    hold: () => { mode = 'pause'; held = true; },
   };
 }

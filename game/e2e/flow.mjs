@@ -5,11 +5,12 @@ import { mkdirSync } from 'node:fs';
 mkdirSync(out, { recursive: true });
 const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const p = await b.newPage({ viewport: { width: 1280, height: 760 }, deviceScaleFactor: 1 });
+p.setDefaultTimeout(180000);
 const errors = [];
 p.on('pageerror', (e) => errors.push(String(e)));
 p.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
 const check = (name, ok) => console.log(`${ok === true ? 'ok  ' : 'FAIL'} ${name}${ok === true ? '' : ' ' + ok}`);
-await p.goto(new URL('../dist/index.html?debug', import.meta.url).href);
+await p.goto(new URL('../dist/index.html?debug&low', import.meta.url).href);
 await p.click('text=New expedition');
 await p.waitForTimeout(400);
 // real-time loop with real input

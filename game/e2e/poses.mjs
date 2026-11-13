@@ -1,0 +1,26 @@
+// A contact sheet of the operative's poses, cut from the middle of the screen.
+import { createRequire } from 'node:module';
+import { mkdirSync } from 'node:fs';
+const { chromium } = createRequire('/')('/opt/node-tools/node_modules/playwright/index.js');
+const out = process.argv[2] ?? new URL('./screenshots', import.meta.url).pathname;
+mkdirSync(out, { recursive: true });
+const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const p = await b.newPage({ viewport: { width: 1280, height: 760 }, deviceScaleFactor: 1 });
+p.setDefaultTimeout(180000);
+const errors = []; p.on('pageerror', (e) => errors.push(String(e)));
+await p.goto(new URL('../dist/index.html?debug&low', import.meta.url).href);
+await p.click('text=New expedition'); await p.waitForTimeout(400);
+await p.evaluate(() => { const G = window.__game; G.hold(); const w = G.world; w.enemies.forEach((e) => (e.dead = true)); w.player.invuln = 9999; document.querySelector('.hud').style.display = 'none'; G.view.zoom = 3.2; G.view.resize(); });
+const clip = { x: 440, y: 150, width: 400, height: 400 };
+const shot = async (name, fn) => { await p.evaluate(fn); await p.screenshot({ path: `${out}/pose-${name}.png`, clip }); };
+const A = '{ aimX: w.player.x + 3, aimZ: w.player.z + 3 }';
+await shot('1-idle', () => { const G = window.__game, w = G.world; G.step(30, { aimX: w.player.x + 3, aimZ: w.player.z + 3 }); });
+await shot('2-walk', () => { const G = window.__game, w = G.world; G.step(22, { aimX: w.player.x + 3, aimZ: w.player.z + 3, mx: 1, mz: 1 }); });
+await shot('3-strafe', () => { const G = window.__game, w = G.world; G.step(22, { aimX: w.player.x + 3, aimZ: w.player.z + 3, mx: -1, mz: 1 }); });
+await shot('4-swing', () => { const G = window.__game, w = G.world; G.step(30, { aimX: w.player.x + 3, aimZ: w.player.z + 3 }); G.step(9, { aimX: w.player.x + 3, aimZ: w.player.z + 3, attack: true }); });
+await shot('5-chop', () => { const G = window.__game, w = G.world; G.step(60, { aimX: w.player.x + 3, aimZ: w.player.z + 3, attack: true }); const pl = w.player; for (let i = 0; i < 200 && !(pl.combo === 2 && pl.state === 'swing' && pl.t > 0.14); i++) G.step(1, { aimX: pl.x + 3, aimZ: pl.z + 3, attack: true }); });
+await shot('6-roll', () => { const G = window.__game, w = G.world; G.step(60, { aimX: w.player.x + 3, aimZ: w.player.z + 3 }); G.step(1, { aimX: w.player.x + 3, aimZ: w.player.z + 3, dodge: true, mx: -1, mz: -1 }); G.step(8, { aimX: w.player.x + 3, aimZ: w.player.z + 3 }); });
+await shot('7-fire', () => { const G = window.__game, w = G.world; G.step(60, { aimX: w.player.x + 3, aimZ: w.player.z + 3 }); G.step(2, { aimX: w.player.x + 3, aimZ: w.player.z + 3, fire: true }); });
+await shot('8-dead', () => { const G = window.__game, w = G.world; w.player.state = 'dead'; G.step(1); for (let i = 0; i < 50; i++) G.view.update(w, 1 / 30); });
+console.log(errors.length ? errors.join('\n') : 'no errors');
+await b.close();
