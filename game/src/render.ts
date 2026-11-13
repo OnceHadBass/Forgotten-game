@@ -64,7 +64,7 @@ export class View {
   private ents = new THREE.Group();
   private hemi = new THREE.HemisphereLight(0xffffff, 0x0b1114, 1.2);
   private torch = new THREE.SpotLight(0xfff0d8, 0, 30, 0.5, 0.55, 1.15);
-  private suit = new THREE.PointLight(0xffdf9e, 8, 9, 1.3);
+  private suit = new THREE.PointLight(0xffdf9e, 15, 11, 1.25);
   private pool: THREE.PointLight[] = [];
   private rig: Rig = operative();
   private plants = new Map<number, PlantView>();
@@ -162,7 +162,7 @@ export class View {
     this.scene.fog = new THREE.FogExp2(look.fog, 0.011);
     this.hemi.color.set(look.amb);
 
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(l.w * T, l.h * T).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: this.stone, color: look.floor, roughness: 0.93 }));
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(l.w * T, l.h * T).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: this.stone, color: new THREE.Color(look.floor).multiplyScalar(1.5), roughness: 0.93 }));
     floor.position.set((l.w * T) / 2, 0, (l.h * T) / 2);
     (floor.material as THREE.MeshStandardMaterial).map!.repeat.set(l.w / 2, l.h / 2);
     floor.receiveShadow = true;
@@ -176,7 +176,7 @@ export class View {
     box.setAttribute('color', new THREE.BufferAttribute(col, 3));
     const cells: number[] = [];
     for (let i = 0; i < l.tiles.length; i++) if (l.tiles[i] === WALL) cells.push(i);
-    const wallMat = new THREE.MeshStandardMaterial({ color: look.wall, map: this.stone, roughness: 0.9, vertexColors: true });
+    const wallMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(look.wall).multiplyScalar(1.25), map: this.stone, roughness: 0.9, vertexColors: true });
     const walls = new THREE.InstancedMesh(box, wallMat, cells.length);
     const border: number[] = [];
     this.wallAt = new Int32Array(l.w * l.h).fill(-1);
@@ -298,8 +298,8 @@ export class View {
     this.torch.position.set(p.x + Math.cos(p.face) * 0.55, 3.1, p.z + Math.sin(p.face) * 0.55);
     this.torch.target.position.set(p.x + Math.cos(p.face) * 8.5, 0, p.z + Math.sin(p.face) * 8.5);
     this.suit.position.set(p.x, 2.2, p.z);
-    this.suit.intensity = dark ? 3.2 : 8;
-    this.hemi.intensity += ((dark ? 1.0 : 1.7) - this.hemi.intensity) * Math.min(1, dt * 3);
+    this.suit.intensity = dark ? 7 : 15;
+    this.hemi.intensity += ((dark ? 2.6 : 4.2) - this.hemi.intensity) * Math.min(1, dt * 3);
     // dust in the beam
     if (p.torch && Math.random() < dt * 40) {
       const d = 2 + Math.random() * 13, a = p.face + (Math.random() - 0.5) * 0.85;

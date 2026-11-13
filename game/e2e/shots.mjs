@@ -1,0 +1,38 @@
+import { createRequire } from 'node:module';
+const { chromium } = createRequire('/')('/opt/node-tools/node_modules/playwright/index.js');
+const out = process.argv[2] ?? new URL('./screenshots', import.meta.url).pathname;
+import { mkdirSync } from 'node:fs';
+mkdirSync(out, { recursive: true });
+const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const p = await b.newPage({ viewport: { width: 1280, height: 760 }, deviceScaleFactor: 1 });
+const errors = [];
+p.on('pageerror', (e) => errors.push(String(e)));
+p.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+await p.goto(new URL('../dist/index.html?debug', import.meta.url).href);
+await p.waitForTimeout(800);
+await p.screenshot({ path: `${out}/1-title.png` });
+await p.click('text=New expedition');
+await p.waitForTimeout(500);
+await p.evaluate(() => window.__game.hold());
+const g = (fn, arg) => p.evaluate(fn, arg);
+await g(() => window.__game.step(30));
+await p.screenshot({ path: `${out}/2-start.png` });
+// walk to the nearest creature and fight it
+const info = await g(() => {
+  const G = window.__game, w = G.world, pl = w.player;
+  let e = w.enemies.filter((x) => x.type !== 'mite').sort((a, b) => Math.hypot(a.x - pl.x, a.z - pl.z) - Math.hypot(b.x - pl.x, b.z - pl.z))[0];
+  pl.x = e.x - 3.2; pl.z = e.z - 1.5;
+  G.step(20, { aimX: e.x, aimZ: e.z });
+  return { enemies: w.enemies.length, plants: w.plants.length, type: e.type };
+});
+console.log(JSON.stringify(info));
+await p.screenshot({ path: `${out}/3-fight.png` });
+await g(() => { const G = window.__game, w = G.world; const e = w.enemies.filter((x) => !x.dead).sort((a, b) => Math.hypot(a.x - w.player.x, a.z - w.player.z) - Math.hypot(b.x - w.player.x, b.z - w.player.z))[0]; for (let i = 0; i < 40; i++) G.step(3, { aimX: e.x, aimZ: e.z, attack: true }); G.step(8, { aimX: e.x, aimZ: e.z, attack: true }); });
+await p.screenshot({ path: `${out}/4-after.png` });
+// a room of plants, torch off
+await g(() => { const G = window.__game, w = G.world; const r = w.level.rooms.find((x) => x.kind === 'garden') ?? w.level.rooms[2]; w.player.x = r.cx; w.player.z = r.cz; w.enemies.forEach((e) => { if (Math.hypot(e.x - r.cx, e.z - r.cz) < 14) e.dead = true; }); G.step(40, { aimX: r.cx - 3, aimZ: r.cz - 3 }); });
+await p.screenshot({ path: `${out}/5-garden.png` });
+await g(() => { const G = window.__game, w = G.world; G.step(2, { torch: true, aimX: w.player.x - 3, aimZ: w.player.z - 3 }); G.step(60, { aimX: w.player.x - 3, aimZ: w.player.z - 3 }); });
+await p.screenshot({ path: `${out}/6-dark.png` });
+console.log(errors.length ? errors.slice(0, 6).join('\n') : 'no errors');
+await b.close();
