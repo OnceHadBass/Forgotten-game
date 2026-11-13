@@ -11,7 +11,7 @@ import { leafTexture, plantGeometry, propMesh, srgb, thicketGeometry, tuftGeomet
 import type { PlantGeo } from './models';
 import { animate, operative } from './operative';
 import type { Rig } from './operative';
-import { assets, material, prop } from './assets';
+import { assets, hasModel, material, prop } from './assets';
 import { animateHero, animateHusk, makeHero, makeHusk } from './hero';
 import { Post } from './post';
 import type { Puppet } from './puppet';
@@ -532,7 +532,7 @@ export class View {
 
     const lightsEarly: { x: number; z: number; c: THREE.Color; power: number }[] = [];
     // the operative
-    if (assets.ready && !this.hero) { this.hero = makeHero(); this.scene.add(this.hero.root); this.rig.root.visible = false; }
+    if (hasModel('operative') && !this.hero) { this.hero = makeHero(); this.scene.add(this.hero.root); this.rig.root.visible = false; }
     if (this.hero) animateHero(this.hero, w, t, dt); else animate(this.rig, w, t, dt);
 
     // light
@@ -696,7 +696,7 @@ export class View {
         const c = creature(e.type);
         c.yaw = e.face;
         if (e.elite) c.root.scale.setScalar(1.25);
-        const puppet = e.type === 'husk' && assets.ready ? makeHusk() : null;
+        const puppet = e.type === 'husk' && hasModel('husk') ? makeHusk() : null;
         if (puppet) { c.root.clear(); c.root.add(puppet.root); c.body = new THREE.Group(); }
         this.ents.add(c.root);
         v = { c, bar: null, puppet };

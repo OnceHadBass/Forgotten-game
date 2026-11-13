@@ -7,9 +7,11 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
-const MODELS = ['operative', 'husk', 'box_small', 'box_large', 'crates_stacked', 'barrel_small', 'barrel_large', 'chest', 'chest_gold', 'rubble_large', 'rubble_half', 'trunk_small_A', 'bed_floor', 'table_small', 'keg'] as const;
+// Characters go here as they are chosen ('operative', 'husk'): the code that drives them is in hero.ts and waits for them.
+const MODELS = ['box_small', 'box_large', 'crates_stacked', 'barrel_small', 'barrel_large', 'chest', 'chest_gold', 'rubble_large', 'rubble_half', 'trunk_small_A', 'bed_floor', 'table_small', 'keg'] as const;
 const TEXTURES = ['monastery_stone_floor', 'dark_rock_02', 'mossy_rock'] as const;
-export type ModelName = (typeof MODELS)[number];
+export type ModelName = (typeof MODELS)[number] | 'operative' | 'husk';
+export const hasModel = (name: ModelName): boolean => models.has(name);
 export type TextureName = (typeof TEXTURES)[number];
 
 const models = new Map<string, GLTF>();

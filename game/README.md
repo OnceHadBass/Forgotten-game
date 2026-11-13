@@ -49,10 +49,10 @@ Keyboard and mouse. WASD to move, the mouse aims the torch, left click swings th
 
 Authored art lives in `public/assets/` and is copied into `dist/assets/` by the build. All of it is CC0 (public domain):
 
-- **KayKit** by Kay Lousberg (kaylousberg.com): the Adventurers and Skeletons character packs (rigged, with 76 to 95 animation clips each) and Dungeon Remastered (props). The operative is the Knight, repainted suit yellow; the husk is the Skeleton Warrior, repainted mossy.
+- **KayKit** by Kay Lousberg (kaylousberg.com): Dungeon Remastered, for crates, lockers, barrels, rubble and the old camp. Its characters were tried for the operative and the husk and taken out again: they are big-headed fantasy figures and wrong for this game.
 - **Poly Haven** (polyhaven.com): scanned stone materials (Monastery Stone Floor, Dark Rock 02, Mossy Rock), 1k colour, relief and roughness maps.
 
-`src/assets.ts` loads them at boot, `src/puppet.ts` drives a rigged figure from the simulation (looping clips play; attacks, rolls and slams are scrubbed to the simulation's clock), and `src/hero.ts` says which clip plays when. If the assets fail to load, the game falls back to the shapes it builds in code. Still built in code: the skulker, spitter, mites, the unlit thing, the Warden constructs, all plants, and the walls' shapes.
+`src/assets.ts` loads them at boot, `src/puppet.ts` drives a rigged figure from the simulation (looping clips play; attacks, rolls and slams are scrubbed to the simulation's clock), and `src/hero.ts` says which clip plays when. Both are waiting for character models: add `operative.glb` or `husk.glb` to `public/assets/models/`, name them in `MODELS`, and map the clip names in `hero.ts`. If the assets fail to load, the game falls back to the shapes it builds in code. Still built in code: the operative, the husk, the skulker, spitter, mites, the unlit thing, the Warden constructs, all plants, and the walls' shapes.
 
 Because the page now fetches files, open it through a web server, not as a file. The tests serve `dist/` themselves (`e2e/serve.mjs`).
 
