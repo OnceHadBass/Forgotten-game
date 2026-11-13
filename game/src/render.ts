@@ -551,6 +551,8 @@ export class View {
       let o = this.props.get(q.id);
       if (!o) { o = propMesh(q.kind); o.position.set(q.x, 0, q.z); o.rotation.y = q.kind === 'urn' || q.kind === 'crate' || q.kind === 'body' ? q.rot : 0; this.ents.add(o); this.props.set(q.id, o); }
       if (q.used && (q.kind === 'urn' || q.kind === 'crate')) o.visible = false;
+      const spin = o.getObjectByName('spin');
+      if (spin) { spin.rotation.z = t * 0.35; lights.push({ x: q.x, z: q.z, c: white, power: 6 }); }
       const lamp = o.getObjectByName('lamp');
       if (lamp) {
         if (q.kind === 'plinth') { lamp.visible = !q.used; lamp.rotation.y = t; lamp.position.y = 1.5 + Math.sin(t * 2) * 0.1; if (!q.used) lights.push({ x: q.x, z: q.z, c: white, power: 16 }); }

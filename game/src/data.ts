@@ -13,7 +13,7 @@ export const TUNE = {
   downs: 2,
   pickup: 1.5,
   graftCap: 3,
-  growth: { perDay: 8, burnCost: 30, burn: 20 },
+  growth: { base: 2.5, perDay: 0.11, hold: 2.2, burnCost: 30, burn: 32, ops: 6 },
 } as const;
 
 export const LAYERS = [
@@ -197,6 +197,9 @@ export const THOUGHTS = {
   grazer: ['Small lights, drifting between the plants. Feeding. They scatter when I move.'],
   eaten: ['It took one of the little lights out of the air. So that is what it does.'],
   bullets: ['The round went straight through it. It hardly noticed. It noticed me.'],
+  choir: ['With the torch off and a foot on the mark, the creaks and clicks of the room fall into one chord. It holds for as long as I stand here.'],
+  wheel: ['A wheel the height of the room, turning once in the time it takes to cross the floor. No dust on it. It has been doing this since before there were people.'],
+  camp: ['A camp. Ours: the same suits, the same lockers, tally marks on the wall. They followed the signal too. Nobody told us.'],
   breach: ['Daylight, coming down through the roof. Things grow thicker under it.'],
 } as const;
 
@@ -208,3 +211,44 @@ export const ENDINGS = {
   open: { title: 'The Vault', text: 'It opens the way an eye does. What is inside is not a monster and is not a gift, and the record of this expedition becomes a different kind of document from here on.' },
 } as const;
 export type EndKind = keyof typeof ENDINGS;
+
+// ── the base ────────────────────────────────────────────────────────────────
+
+export type ModuleId = 'lab' | 'wire' | 'stores' | 'infirmary' | 'workshop' | 'mess';
+export type Job = 'lab' | 'wire' | 'infirmary' | 'workshop' | 'rest';
+
+export const MODULES: Record<ModuleId | 'ops', { name: string; col: number; row: number; does: string; lost: string }> = {
+  lab: { name: 'Lab', col: 0, row: 0, does: 'Studies samples, works out relics, and cultures grafts for the next descent.', lost: 'No study, no cultured grafts.' },
+  wire: { name: 'Wire post', col: 1, row: 0, does: 'Where the wire crew work from.', lost: 'Work on the wire counts for half.' },
+  stores: { name: 'Stores', col: 2, row: 0, does: 'Where the salvage is kept.', lost: 'A third of the salvage went with it.' },
+  infirmary: { name: 'Infirmary', col: 0, row: 1, does: 'Gets the hurt back on their feet.', lost: 'The hurt mend at half the pace.' },
+  ops: { name: 'Operations', col: 1, row: 1, does: 'The heart of the base. If the growth fills it, the base has fallen.', lost: '' },
+  workshop: { name: 'Workshop', col: 2, row: 1, does: 'Builds what the workshop list offers. Each hand there takes a tenth off the price.', lost: 'Nothing can be built.' },
+  mess: { name: 'Mess', col: 1, row: 2, does: 'Where people sit together.', lost: 'Hope drains twice as fast.' },
+};
+
+export const JOBS: Record<Job, { name: string; needs: ModuleId | null }> = {
+  lab: { name: 'Lab', needs: 'lab' }, wire: { name: 'The wire', needs: null }, infirmary: { name: 'Infirmary', needs: 'infirmary' },
+  workshop: { name: 'Workshop', needs: 'workshop' }, rest: { name: 'Resting', needs: null },
+};
+
+/** Things seen below that are no use to anyone, and are what keeps the mess table full. */
+export const WONDERS: Record<string, { title: string; told: string }> = {
+  garden: { title: 'The tended garden', told: 'says something down there is still gardening. The idea that anything is being looked after has gone round the whole base.' },
+  pulse: { title: 'The Pulse passing', told: 'saw the whole ruin light up in a wave. Drew it on the board. People keep stopping to look.' },
+  sky: { title: 'Daylight below', told: 'brought back a flask of rain from under a broken roof, and a small pale flower. It is on the mess table in a mug.' },
+  white: { title: 'White light', told: 'carried a piece of Warden light up the lift. Everyone found a reason to walk past the lab.' },
+  glyph: { title: 'The walls can be read', told: 'copied a wall of glyphs by hand. Three people are arguing about it, happily.' },
+  choir: { title: 'The choir room', told: 'hummed a chord in the mess that the plants make. Some people cried and could not say why.' },
+  wheel: { title: 'A machine still running', told: 'timed a wheel that has been turning for longer than there have been people. Somebody chalked its count on the mess wall.' },
+  tags: { title: 'Brought home', told: 'brought the tags home. They are on the wall with the others, where they should be.' },
+  camp: { title: 'The ones before', told: 'found a camp like ours, years old. Nobody slept much. But nobody is pretending any more, and that helped.' },
+};
+
+export const MOODS = ['holding together', 'steady', 'fraying', 'coming apart'] as const;
+export const BOARD: readonly (readonly string[])[] = [
+  ['Someone has started a sweepstake on what the wheel is for.', 'Two volunteers for the wire before the rota went up.', 'The mess was loud tonight. Good loud.', 'Somebody is teaching people the plant names. They are learning them.'],
+  ['Rota filled. Nobody argued.', 'Someone mended the mess door. Nobody was asked to.', 'Quiet at dinner. Not a bad quiet.', 'Cards after shift. The same four people.'],
+  ['A place was laid at dinner for someone who is not coming back.', 'The rota has two blanks on it.', 'Somebody has stopped winding the day clock.', 'An argument about the signal, and whether anyone is listening to ours.'],
+  ['Nobody ate together tonight.', 'The wire shift was one short. Nobody said who.', 'Someone has scratched every name off the rota and written NO ONE IS COMING.', 'A pack is missing from stores, and a pair of boots.'],
+];

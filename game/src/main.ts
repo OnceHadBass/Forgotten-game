@@ -3,13 +3,14 @@
 
 import { TUNE } from './data';
 import type { EndKind, UpgradeId } from './data';
-import { UPGRADES } from './data';
 import { Audio } from './audio';
 import { Hud } from './hud';
 import { View } from './render';
 import { fork } from './rng';
 import { createWorld, settle, step } from './sim';
-import { loadCampaign, newCampaign, passDay, saveCampaign } from './state';
+import { burn, buy, passDay, reclaim, setJob } from './camp';
+import type { Job, ModuleId } from './data';
+import { loadCampaign, loadPrior, newCampaign, recordExpedition, saveCampaign } from './state';
 import type { Campaign, Input, World } from './state';
 
 const app = document.getElementById('app')!;
@@ -58,22 +59,21 @@ function startRun(depth: number, carry?: World): void {
 function toBase(): void {
   if (!camp) return;
   fade.classList.remove('on');
+  if (camp.over) recordExpedition(camp);
   saveCampaign(camp.over ? null : camp);
   if (camp.over) { mode = 'over'; hud.ending(camp); } else { mode = 'base'; hud.base(camp); }
 }
 
 const hud = new Hud(app, {
-  begin: () => { audio.start(); camp = newCampaign((Date.now() ^ (Math.random() * 0x7fffffff)) | 0); startRun(1); setTimeout(() => hud.say('Left click to cut. Right click to shoot. Space to dodge. F for the torch.', 'note'), 2500); },
+  begin: () => { audio.start(); camp = newCampaign((Date.now() ^ (Math.random() * 0x7fffffff)) | 0, loadPrior()); startRun(1); setTimeout(() => hud.say('Left click to cut. Right click to shoot. Space to dodge. F for the torch.', 'note'), 2500); },
   resume: () => { audio.start(); camp = loadCampaign(); if (camp) toBase(); },
-  descend: (d) => { audio.start(); startRun(d); },
-  buy: (id) => {
-    const u = UPGRADES.find((x) => x.id === id), c = camp;
-    if (!u || !c) return;
-    const n = c.upgrades[id as UpgradeId], cost = u.cost * (n + 1);
-    if (n < u.max && c.salvage >= cost) { c.salvage -= cost; c.upgrades[id as UpgradeId]++; audio.play('equip'); toBase(); }
-  },
-  burn: () => { const c = camp; if (c && c.salvage >= TUNE.growth.burnCost) { c.salvage -= TUNE.growth.burnCost; c.growth = Math.max(0, c.growth - TUNE.growth.burn); c.pulse += 1; audio.play('boom', 0.5); toBase(); } },
-  who: (i) => { if (camp?.roster[i].alive) { camp.current = i; toBase(); } },
+  descend: (d) => { audio.start(); const p = camp?.roster[camp.current]; if (p?.alive && p.wound <= 0) startRun(d); },
+  buy: (id) => { if (camp && buy(camp, id as UpgradeId)) { audio.play('equip'); toBase(); } },
+  burn: () => { if (camp && burn(camp)) { audio.play('boom', 0.5); toBase(); } },
+  job: (i, job) => { if (camp) { setJob(camp, i, job as Job); toBase(); } },
+  reclaim: (id) => { if (camp) { reclaim(camp, id as ModuleId, fork(camp.seed, 98, camp.day)); toBase(); } },
+  wait: () => { if (camp) { passDay(camp, fork(camp.seed, 99, camp.day), null); toBase(); } },
+  who: (i) => { if (camp?.roster[i].alive && camp.roster[i].wound <= 0) { camp.current = i; toBase(); } },
   ending: (k: EndKind) => { if (camp) { camp.over = k; toBase(); } },
   unpause: () => { mode = 'play'; hud.show(true); },
   restart: () => { saveCampaign(null); camp = null; mode = 'title'; backdrop(); hud.title(null); },
@@ -117,8 +117,8 @@ function finish(w: World): void {
   const c = w.camp;
   if (w.outcome === 'descend') { startRun(w.depth + 1, w); return; }
   if (w.outcome === 'won') { settle(w); mode = 'over'; hud.vault(); return; }
-  settle(w);
-  passDay(c, fork(c.seed, 99, c.day));
+  const away = c.current;
+  passDay(c, fork(c.seed, 99, c.day), away, settle(w));
   toBase();
 }
 

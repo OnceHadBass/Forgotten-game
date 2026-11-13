@@ -7,6 +7,7 @@ import { FLOOR, THICKET, WALL, centre, distances, generate, idx, los, moveCircle
 import type { Room } from './level';
 import { chance, fork, int, pick, range } from './rng';
 import type { RngHost } from './rng';
+import { hopeShift, tellWonders } from './camp';
 import { has, rollItem, speciesName, starterGear } from './state';
 import type { Campaign, Enemy, Input, Loot, LootKind, Plant, Player, Prop, PropKind, World, Zone, ZoneKind } from './state';
 
@@ -41,9 +42,10 @@ export function createWorld(camp: Campaign, depth: number, carry?: Player): Worl
     camp, level, depth, rng, time: 0, nextId: 1, player, enemies: [], plants: [], props: [], loot: [], projs: [], zones: [],
     fx: [], flow: new Int16Array(level.w * level.h), flowT: 0, explored: new Uint8Array(level.w * level.h), revealed: false,
     hitstop: 0, still: 0, prompt: null, near: null, hover: null, hoverE: null, outcome: null, liftT: -1, said: {}, boss: null, cause: '',
-    wave: -1, waveT: 32, waveX: level.rooms[level.hatch].cx, waveZ: level.rooms[level.hatch].cz, breaches: [],
+    wonders: [], choirT: 0, wave: -1, waveT: 32, waveX: level.rooms[level.hatch].cx, waveZ: level.rooms[level.hatch].cz, breaches: [],
   };
   populate(w);
+  if (!carry) camp.stock.forEach((n, sp) => { if (n > 0) { player.grafts[sp] = Math.min(player.graftCap, player.grafts[sp] + n); camp.stock[sp] = 0; player.graftSel = sp; } });
   w.fx.push({ k: 'say', t: pick(rng, THOUGHTS.start) });
   return w;
 }
@@ -162,6 +164,11 @@ function populate(w: World): void {
     for (let i = 0; i < depth - 1 && far.length; i++) { const r = pick(h, far); const p = spot(w, r, 0.5); if (p) addEnemy(w, 'unlit', p.x, p.z); }
   }
   const rooms = l.rooms.filter((r) => r.kind !== 'start');
+  const halls = l.rooms.filter((r) => r.kind === 'hall' || r.kind === 'nest');
+  const piece = (kind: PropKind): void => { const p = halls.length ? spot(w, pick(h, halls), 1.6, 1) : null; if (p) addProp(w, kind, p.x, p.z); };
+  if (depth === 2 && !camp.wonders.includes('choir')) piece('mark');
+  if (depth === 3 && !camp.wonders.includes('wheel')) piece('wheel');
+  if (depth === 1 && camp.prior && !camp.told.camp) piece('camp');
   for (const f of camp.fallen.filter((b) => b.depth === depth)) {
     const p = spot(w, pick(h, rooms), 1);
     if (p) addProp(w, 'body', p.x, p.z, camp.fallen.indexOf(f));
@@ -182,6 +189,7 @@ function sayOnce(w: World, key: keyof typeof THOUGHTS): void {
 function meet(w: World, type: EnemyId): void {
   if (w.camp.bestiary[type]) return;
   w.camp.bestiary[type] = 1;
+  if (type === 'warden') wonder(w, 'garden');
   w.fx.push({ k: 'say', t: CREATURES[type].first });
 }
 
@@ -190,6 +198,11 @@ function measure(w: World, type: EnemyId): void {
   if ((w.camp.bestiary[type] ?? 0) >= 2) return;
   w.camp.bestiary[type] = 2;
   w.fx.push({ k: 'say', t: `${ENEMIES[type].name || 'It'}: ${CREATURES[type].trick}`, tone: 'note' });
+}
+
+/** Something seen that is no use to anyone. It only counts if the operative lives to tell it. */
+function wonder(w: World, id: string): void {
+  if (!w.wonders.includes(id) && (id === 'tags' || !w.camp.wonders.includes(id))) w.wonders.push(id);
 }
 
 function tell(w: World, key: string, text: string): void {
@@ -545,6 +558,7 @@ function interact(w: World, press: boolean): void {
       : q.kind === 'plinth' && !q.used ? 'Take the white light'
       : q.kind === 'body' && !q.used ? `Recover ${w.camp.fallen[q.data]?.name ?? 'them'}`
       : q.kind === 'glyph' && !q.used ? 'Read the wall'
+      : q.kind === 'camp' && !q.used ? 'Look round the camp'
       : q.kind === 'door' && w.boss?.dead ? 'The Vault' : null;
     if (text) { best = d; w.near = q; w.prompt = text; }
   }
@@ -568,7 +582,7 @@ function interact(w: World, press: boolean): void {
   if (n.kind === 'hatch') { noise(w, n.x, n.z, 22); w.fx.push({ k: 'sound', s: 'hatch', x: n.x, z: n.z }); w.outcome = 'descend'; }
   if (n.kind === 'chest') { n.used = true; w.fx.push({ k: 'sound', s: 'equip', x: n.x, z: n.z }); drop(w, 'item', n.x, n.z, 1, { item: rollItem(w.rng, w.depth, 0.25) }); drop(w, 'medkit', n.x, n.z); spill(w, n.x, n.z, 2); }
   if (n.kind === 'plinth') {
-    n.used = true; w.camp.relicTaken[w.depth - 1] = true;
+    n.used = true; w.camp.relicTaken[w.depth - 1] = true; wonder(w, 'white');
     const deal = w.camp.relicDeal[w.depth - 1];
     drop(w, 'relic', n.x, n.z + 1.2, 1, { relic: { form: deal.form, fn: deal.fn, known: false }, vx: 0, vz: 0 });
     w.fx.push({ k: 'burst', x: n.x, z: n.z, r: 5, c: WHITE }, { k: 'sound', s: 'relic', x: n.x, z: n.z });
@@ -580,15 +594,21 @@ function interact(w: World, press: boolean): void {
     if (f) {
       for (const it of [f.gear.blade, f.gear.gun, f.gear.suit]) if (it.rarity > 1 || it.affixes.length) drop(w, 'item', n.x, n.z, 1, { item: it });
       if (f.gear.relic) drop(w, 'relic', n.x, n.z, 1, { relic: f.gear.relic });
-      f.depth = -1;
+      f.depth = -1; wonder(w, 'tags');
       w.fx.push({ k: 'say', t: `${f.name}. The ruin has had time with them. I took the tags. Somebody should know.`, tone: 'white' });
     }
   }
   if (n.kind === 'glyph') {
-    n.used = true; w.revealed = true;
+    n.used = true; w.revealed = true; wonder(w, `glyph${w.depth}`);
     const line = LORE[Math.min(w.camp.lore, LORE.length - 1)];
     w.camp.lore++;
     w.fx.push({ k: 'say', t: `${line} And a plan of this level, cut into the stone.`, tone: 'white' }, { k: 'sound', s: 'relic', x: n.x, z: n.z });
+  }
+  if (n.kind === 'camp') {
+    n.used = true; w.camp.told.camp = true; wonder(w, 'camp');
+    const pr = w.camp.prior;
+    w.fx.push({ k: 'say', t: `${pick(w.rng, THOUGHTS.camp)}${pr ? ` Expedition ${pr.n}. ${pr.days} days of marks.${pr.dead.length ? ` Names scratched beside them: ${pr.dead.slice(0, 4).join(', ')}.` : ''}` : ''}`, tone: 'white' });
+    drop(w, 'medkit', n.x, n.z); spill(w, n.x, n.z, 3); drop(w, 'item', n.x, n.z, 1, { item: rollItem(w.rng, w.depth, 0.3) });
   }
   if (n.kind === 'door') w.outcome = 'won';
 }
@@ -1041,7 +1061,14 @@ function explore(w: World): void {
     if (kind === 'hatch') sayOnce(w, 'hatch');
   }
   for (const q of w.props) if (q.kind === 'body' && !q.used && dist(q.x, q.z, p.x, p.z) < 6) sayOnce(w, 'body');
-  for (const q of w.breaches) if (dist(q.x, q.z, p.x, p.z) < 5) sayOnce(w, 'breach');
+  for (const q of w.props) {
+    if (q.kind === 'wheel' && !q.used && dist(q.x, q.z, p.x, p.z) < 6) { q.used = true; sayOnce(w, 'wheel'); wonder(w, 'wheel'); }
+    if (q.kind === 'mark' && !q.used) {
+      w.choirT = dist(q.x, q.z, p.x, p.z) < 1.4 && !p.torch ? w.choirT + 0.25 : 0;
+      if (w.choirT > 1.4) { q.used = true; w.revealed = true; sayOnce(w, 'choir'); wonder(w, 'choir'); w.fx.push({ k: 'sound', s: 'relic', x: q.x, z: q.z }, { k: 'ring', x: q.x, z: q.z, r: 12, t: 1.6, c: 0x37d3bf }); for (const pl of w.plants) if (dist(pl.x, pl.z, q.x, q.z) < 16) pl.surge = 1; }
+    }
+  }
+  for (const q of w.breaches) if (dist(q.x, q.z, p.x, p.z) < 5) { sayOnce(w, 'breach'); wonder(w, 'sky'); }
 }
 
 export function step(w: World, input: Input, dt: number): void {
@@ -1056,7 +1083,7 @@ export function step(w: World, input: Input, dt: number): void {
   if (w.waveT <= 0 && w.depth < 4) {
     w.waveT = range(w.rng, 70, 110) / (1 + w.camp.pulse * 0.4); w.wave = 0;
     w.fx.push({ k: 'sound', s: 'pulse', x: w.player.x, z: w.player.z }, { k: 'shake', n: 0.25 });
-    sayOnce(w, 'pulse');
+    sayOnce(w, 'pulse'); wonder(w, 'pulse');
   }
   if (w.wave >= 0) { w.wave += 26 * dt; if (w.wave > 160) w.wave = -1; }
   stepPlants(w, dt * slow);
@@ -1077,22 +1104,23 @@ export function step(w: World, input: Input, dt: number): void {
 export function settle(w: World): string[] {
   const c = w.camp, p = w.player, who = c.roster[c.current];
   const lines: string[] = [];
+  const deeper = w.depth > c.deepest;
   c.deepest = Math.max(c.deepest, Math.min(4, w.depth));
   if (w.outcome === 'dead') {
     who.alive = false; who.epitaph = `Lost in ${['', 'the Threshold', 'the Interior', 'the Works', 'the Vault'][w.depth]}, day ${c.day}, to ${w.cause || 'the ruin'}.`;
     c.fallen.push({ name: who.name, depth: w.depth, gear: c.gear });
     c.gear = starterGear();
-    lines.push(`${who.name} did not come back. ${who.epitaph}`, 'What they carried is still down there with them.');
-    const next = c.roster.findIndex((x) => x.alive);
-    if (next >= 0) c.current = next;
+    hopeShift(c, -12);
+    lines.push(`${who.name} did not come back. ${who.epitaph}`, 'What they carried is still down there with them. What they saw, nobody will hear.');
   } else {
     who.runs++;
+    who.wound = p.downs + (p.hp < p.maxHp * 0.4 ? 1 : 0);
     c.salvage += p.salvage;
-    lines.push(`${who.name} came up on the lift with ${p.salvage} salvage${p.samples ? ` and ${p.samples} sample${p.samples > 1 ? 's' : ''}` : ''}.`);
-    if (p.kills > 0) lines.push(`${p.kills} thing${p.kills > 1 ? 's' : ''} killed below. The ruin will have noticed.`);
+    hopeShift(c, 2 + (deeper ? 4 : 0));
+    lines.push(`${who.name} came up on the lift with ${p.salvage} salvage${p.samples ? ` and ${p.samples} sample${p.samples > 1 ? 's' : ''}` : ''}${who.wound ? `, and will be ${who.wound} day${who.wound > 1 ? 's' : ''} mending` : ''}.`);
+    tellWonders(c, w.wonders, lines);
   }
   c.fallen = c.fallen.filter((f) => f.depth > 0);
-  c.night = lines;
   return lines;
 }
 

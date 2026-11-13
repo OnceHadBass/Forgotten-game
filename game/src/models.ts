@@ -271,6 +271,19 @@ export function propMesh(kind: string): THREE.Object3D {
   } else if (kind === 'glyph') {
     g.add(mesh(box(2.6, 2.2, 0.2), stone, 0, 1.1, 0));
     for (let i = 0; i < 14; i++) { const m = new THREE.Mesh(box(0.08 + (i % 3) * 0.12, 0.06, 0.02), new THREE.MeshBasicMaterial({ color: 0x9fb4be })); m.position.set(-1 + (i % 5) * 0.5, 0.6 + Math.floor(i / 5) * 0.5, 0.11); m.name = 'lamp'; g.add(m); }
+  } else if (kind === 'mark') {
+    const m = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.7, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x5f7a80 })); m.position.y = 0.03; g.add(m);
+    const d = new THREE.Mesh(new THREE.CircleGeometry(0.12, 12).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x5f7a80 })); d.position.y = 0.03; g.add(d);
+  } else if (kind === 'wheel') {
+    const rim = new THREE.Group(); rim.name = 'spin'; rim.position.y = 2.6;
+    rim.add(mesh(new THREE.TorusGeometry(2.3, 0.14, 6, 28), mat(0x8b949b, { roughness: 0.4, metalness: 0.5 })));
+    for (let i = 0; i < 6; i++) { const sp = mesh(box(4.5, 0.08, 0.08), mat(0x8b949b, { metalness: 0.5 })); sp.rotation.z = (i / 6) * Math.PI; rim.add(sp); }
+    g.add(rim, mesh(box(0.5, 2.6, 0.9), stone, 0, 1.3, 0));
+    const s = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), white); s.position.y = 2.6; s.name = 'lamp'; g.add(s);
+  } else if (kind === 'camp') {
+    g.add(mesh(box(1.1, 0.6, 0.7), human, -0.9, 0.3, 0.2), mesh(box(0.7, 0.5, 0.7), human, 0.7, 0.25, -0.5));
+    const tent = mesh(new THREE.ConeGeometry(1.3, 1.5, 4), mat(0x6b5f3a, { roughness: 1 }), 0, 0.75, 0.1); tent.rotation.y = 0.6; g.add(tent);
+    const s = new THREE.Mesh(box(1.12, 0.07, 0.72), yellow); s.position.set(-0.9, 0.5, 0.2); g.add(s);
   } else if (kind === 'door') {
     g.add(mesh(box(0.6, 4.2, 7), mat(0x8b949b, { roughness: 0.5, metalness: 0.3 }), 0, 2.1, 0));
     const s = new THREE.Mesh(box(0.62, 4.0, 0.08), white); s.position.y = 2.1; s.name = 'lamp'; g.add(s);

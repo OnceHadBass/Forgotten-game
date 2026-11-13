@@ -2,7 +2,7 @@
 // and the save. The campaign is what outlives a descent.
 
 import { AFFIXES, BEHAVIOURS, BLADES, BODY_HUES, GLOW_HUES, GUNS, NAME_FIRST, NAME_SECOND, PEOPLE, PLANS, RARITY, RELIC_FORMS, SUITS, TUNE, UPGRADES } from './data';
-import type { AffixId, BehaviourId, EndKind, EnemyId, Item, Plan, RelicFn, Sense, Slot, UpgradeId } from './data';
+import type { AffixId, BehaviourId, EndKind, EnemyId, Item, Job, ModuleId, Plan, RelicFn, Sense, Slot, UpgradeId } from './data';
 import type { Level } from './level';
 import { chance, fork, int, pick, range, shuffle } from './rng';
 import type { RngHost } from './rng';
@@ -16,9 +16,15 @@ export interface Gear { blade: Item; gun: Item; suit: Item; relic: Relic | null 
 export interface Fallen { name: string; depth: number; gear: Gear }
 
 export interface Campaign {
-  version: 3; seed: number; day: number; growth: number; pulse: number; salvage: number;
+  version: 4; seed: number; day: number; growth: number; pulse: number; salvage: number;
   upgrades: Record<UpgradeId, number>;
-  roster: { name: string; alive: boolean; runs: number; epitaph?: string }[];
+  roster: { name: string; alive: boolean; runs: number; epitaph?: string; job: Job; wound: number }[];
+  /** The six modules round Operations. `growth` above is Operations itself. */
+  modules: { id: ModuleId; growth: number; lost: boolean }[];
+  hope: number; wonders: string[]; board: string[];
+  /** Lab work: study per species, the relic on the bench, and cultured grafts waiting for the next descent. */
+  study: number[]; bench: number; culture: number; stock: number[];
+  expedition: number; prior: { n: number; days: number; dead: string[] } | null;
   current: number;
   species: Species[]; guide: Knowledge[];
   relicDeal: { form: string; fn: RelicFn }[]; relicTaken: boolean[];
@@ -38,7 +44,7 @@ export interface Enemy { id: number; type: EnemyId; x: number; z: number; r: num
   /** Smoothed velocity, distance walked (drives the gait) and when it last chose to move. */
   sx: number; sz: number; gait: number; st: number }
 
-export type PropKind = 'urn' | 'crate' | 'chest' | 'plinth' | 'lift' | 'hatch' | 'body' | 'glyph' | 'door';
+export type PropKind = 'urn' | 'crate' | 'chest' | 'plinth' | 'lift' | 'hatch' | 'body' | 'glyph' | 'door' | 'mark' | 'wheel' | 'camp';
 export interface Prop { id: number; kind: PropKind; x: number; z: number; r: number; hp: number; used: boolean; rot: number; data: number }
 
 export type LootKind = 'salvage' | 'medkit' | 'ammo' | 'cell' | 'item' | 'graft' | 'relic' | 'sample';
@@ -81,7 +87,7 @@ export interface World {
   player: Player; enemies: Enemy[]; plants: Plant[]; props: Prop[]; loot: Loot[]; projs: Proj[]; zones: Zone[];
   fx: Fx[]; flow: Int16Array; flowT: number; explored: Uint8Array; revealed: boolean;
   hitstop: number; still: number; prompt: string | null; near: Loot | Prop | null; hover: Plant | null; hoverE: Enemy | null;
-  outcome: null | 'extracted' | 'dead' | 'descend' | 'won'; liftT: number;
+  outcome: null | 'extracted' | 'dead' | 'descend' | 'won'; liftT: number; wonders: string[]; choirT: number;
   /** The Pulse passing: a ring of light spreading from the way down. */
   wave: number; waveT: number; waveX: number; waveZ: number; breaches: { x: number; z: number }[]; said: Record<string, boolean>; boss: Enemy | null; cause: string;
 }
@@ -122,7 +128,7 @@ export const rarityName = (it: Item): string => RARITY[it.rarity];
 
 // ── campaign ────────────────────────────────────────────────────────────────
 
-export function newCampaign(seed: number): Campaign {
+export function newCampaign(seed: number, prior: Campaign['prior'] = null): Campaign {
   const h = fork(seed, 1);
   const behaviours = shuffle(h, Object.keys(BEHAVIOURS) as BehaviourId[]);
   const senses = shuffle<Sense>(h, ['light', 'light', 'light', 'sound', 'sound', 'sound', 'near', 'near']);
@@ -138,9 +144,12 @@ export function newCampaign(seed: number): Campaign {
   const forms = shuffle(h, RELIC_FORMS);
   const fns = shuffle<RelicFn>(h, ['hush', 'lattice', 'still', 'tending', 'choir', 'memorywork']);
   return {
-    version: 3, seed, day: 1, growth: 12, pulse: 0, salvage: 0,
+    version: 4, seed, day: 1, growth: 0, pulse: 0, salvage: 0,
+    modules: (['lab', 'wire', 'stores', 'infirmary', 'workshop', 'mess'] as const).map((id) => ({ id, growth: Math.round(range(h, 4, 14)), lost: false })),
+    hope: 62, wonders: [], board: ['Sixteen came down. Eight are left. The ship is not going back up.'],
+    study: species.map(() => 0), bench: 0, culture: 0, stock: species.map(() => 0), expedition: (prior?.n ?? 0) + 1, prior,
     upgrades: Object.fromEntries(UPGRADES.map((u) => [u.id, 0])) as Record<UpgradeId, number>,
-    roster: shuffle(h, PEOPLE).slice(0, 8).map((name) => ({ name, alive: true, runs: 0 })),
+    roster: shuffle(h, PEOPLE).slice(0, 8).map((name, i) => ({ name, alive: true, runs: 0, job: (['wire', 'lab', 'wire', 'lab', 'infirmary', 'wire', 'workshop', 'wire'] as const)[i], wound: 0 })),
     current: 0, species,
     guide: species.map(() => ({ seen: false, sense: false, behaviour: false, samples: 0 })),
     relicDeal: [0, 1, 2].map((i) => ({ form: forms[i], fn: fns[i] })), relicTaken: [false, false, false],
@@ -151,24 +160,23 @@ export function newCampaign(seed: number): Campaign {
 export const starterGear = (): Gear => ({ blade: makeItem('blade', 0, 1, []), gun: makeItem('gun', 0, 1, []), suit: makeItem('suit', 0, 1, []), relic: null });
 export const speciesName = (c: Campaign, id: number): string => c.species[id].name;
 
-const SAVE = 'forgotten.game.v3';
+const SAVE = 'forgotten.game.v4';
+const LEDGER = 'forgotten.ledger';
+
+/** The last expedition that ended, for the next one to find. */
+export function loadPrior(): Campaign['prior'] {
+  try { return JSON.parse(localStorage.getItem(LEDGER) ?? 'null') as Campaign['prior']; } catch { return null; }
+}
+export function recordExpedition(c: Campaign): void {
+  try { localStorage.setItem(LEDGER, JSON.stringify({ n: c.expedition, days: c.day, dead: c.roster.filter((p) => !p.alive).map((p) => p.name) })); } catch { /* no storage */ }
+}
 export function loadCampaign(): Campaign | null {
   try {
     const c = JSON.parse(localStorage.getItem(SAVE) ?? 'null') as Campaign | null;
-    return c && c.version === 3 ? c : null;
+    return c && c.version === 4 ? c : null;
   } catch { return null; }
 }
 export function saveCampaign(c: Campaign | null): void {
   try { if (c) localStorage.setItem(SAVE, JSON.stringify(c)); else localStorage.removeItem(SAVE); } catch { /* no storage: the game still plays */ }
 }
 
-/** A day passes at base: the growth comes on, the Pulse eases. */
-export function passDay(c: Campaign, h: RngHost): void {
-  c.day++;
-  const rate = TUNE.growth.perDay + c.day * 0.25 - c.upgrades.wire * 1.5;
-  c.growth = Math.min(100, c.growth + Math.max(2, rate * range(h, 0.7, 1.3)));
-  c.pulse = Math.max(0, c.pulse - 0.34);
-  if (c.growth >= 100) c.over = 'fallen';
-  else if (!c.roster.some((p) => p.alive)) c.over = 'spent';
-  if (chance(h, 0.5) && c.growth > 60 && !c.over) c.night.push('The growth has reached the mess windows. People eat with their backs to them.');
-}

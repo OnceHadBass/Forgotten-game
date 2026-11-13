@@ -1,8 +1,9 @@
 // The HUD and the screens round the game: plain DOM over the canvas. It shows
 // only what the field guide has earned about a plant, never the species data.
 
-import { BEHAVIOURS, CREATURES, ENDINGS, ENEMIES, LAYERS, RARITY_COLOUR, RELICS, TUNE, UPGRADES } from './data';
-import type { EnemyId } from './data';
+import { mod, moodIndex, upgradeCost, worst } from './camp';
+import { BEHAVIOURS, CREATURES, ENDINGS, ENEMIES, JOBS, LAYERS, MODULES, MOODS, RARITY_COLOUR, RELICS, TUNE, UPGRADES, WONDERS } from './data';
+import type { EnemyId, Job, ModuleId } from './data';
 import type { EndKind } from './data';
 import { FLOOR, THICKET, WALL, idx, tx } from './level';
 import type { View } from './render';
@@ -13,7 +14,7 @@ import type { Campaign, Fx, World } from './state';
 const el = (tag: string, cls = '', html = ''): HTMLElement => { const e = document.createElement(tag); if (cls) e.className = cls; if (html) e.innerHTML = html; return e; };
 const esc = (s: string): string => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!);
 
-export interface Actions { begin: () => void; resume: () => void; descend: (depth: number) => void; buy: (id: string) => void; burn: () => void; who: (i: number) => void; ending: (k: EndKind) => void; unpause: () => void; restart: () => void; mute: () => void }
+export interface Actions { begin: () => void; resume: () => void; descend: (depth: number) => void; buy: (id: string) => void; burn: () => void; who: (i: number) => void; job: (i: number, job: string) => void; reclaim: (id: string) => void; wait: () => void; ending: (k: EndKind) => void; unpause: () => void; restart: () => void; mute: () => void }
 
 function itemCard(it: Item, label: string): string {
   return `<div class="item" style="--c:${RARITY_COLOUR[it.rarity]}"><i>${label} · ${rarityName(it)}</i><b>${esc(it.name)}</b>${itemLines(it).map((l) => `<span>${l}</span>`).join('')}</div>`;
@@ -45,12 +46,13 @@ export class Hud {
     this.map.className = 'map';
     this.root.append(this.vignette, this.status, this.labels, this.where, this.map, this.boss, this.toasts, this.card, this.compare, this.prompt, this.bars, this.kit);
     parent.append(this.root, this.overlay);
+    this.overlay.addEventListener('change', (e) => { const t = e.target as HTMLSelectElement; if (t.dataset.job) act.job(+t.dataset.job, t.value); });
     this.overlay.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest('[data-a]') as HTMLElement | null;
       if (!b || b.hasAttribute('disabled')) return;
       const [a, arg] = b.dataset.a!.split(':');
       if (a === 'begin') act.begin(); if (a === 'resume') act.resume(); if (a === 'descend') act.descend(+arg);
-      if (a === 'buy') act.buy(arg); if (a === 'burn') act.burn(); if (a === 'who') act.who(+arg);
+      if (a === 'buy') act.buy(arg); if (a === 'burn') act.burn(); if (a === 'reclaim') act.reclaim(arg); if (a === 'wait') act.wait(); if (a === 'who') act.who(+arg);
       if (a === 'ending') act.ending(arg as EndKind); if (a === 'unpause') act.unpause(); if (a === 'restart') act.restart(); if (a === 'mute') act.mute();
     });
   }
@@ -81,33 +83,53 @@ export class Hud {
     const who = c.roster[c.current];
     const dead = c.roster.filter((p) => !p.alive);
     const pulse = c.pulse < 0.5 ? 'Stable' : c.pulse < 1.5 ? 'Strain' : 'Surge';
-    const g = c.gear;
+    const g = c.gear, mood = moodIndex(c), bad = worst(c);
+    const fit = who.alive && who.wound <= 0;
+    const lostMods = c.modules.filter((m) => m.lost);
+    const cell = (id: ModuleId | 'ops', growth: number, lost: boolean): string => {
+      const d = MODULES[id], x = d.col * 100 + 6, y = d.row * 100 + 6;
+      let vines = '';
+      // growth comes in from the edges; how far depends on how much is lost
+      for (let i = 0, n = Math.round(growth / 3); i < n; i++) {
+        const side = (i * 7 + d.col * 3 + d.row) % 4, t = ((i * 37 + d.col * 11) % 88), reach = (growth / 100) * (24 + ((i * 13) % 28)), bend = ((i * 29) % 30) - 15;
+        const [sx, sy, dx, dy] = side === 0 ? [x + t, y, 0, 1] : side === 1 ? [x + 88, y + t, -1, 0] : side === 2 ? [x + t, y + 88, 0, -1] : [x, y + t, 1, 0];
+        vines += `M${sx} ${sy}q${(dx * reach * 0.5 + dy * bend).toFixed(0)} ${(dy * reach * 0.5 + dx * bend).toFixed(0)} ${(dx * reach).toFixed(0)} ${(dy * reach).toFixed(0)}`;
+      }
+      return `<g class="mod ${lost ? 'lost' : ''} ${id === 'ops' ? 'ops' : ''}"><title>${d.does} ${lost ? d.lost : ''}</title><rect x="${x}" y="${y}" width="88" height="88" rx="2"/><path d="${vines}" fill="none" stroke-width="${lost ? 4.5 : 2.4}" stroke-linecap="round"/><text x="${x + 6}" y="${y + 18}" class="mn">${d.name.toUpperCase()}</text><text x="${x + 6}" y="${y + 80}" class="mp">${lost ? 'LOST' : `${Math.round(growth)}%`}</text></g>`;
+    };
     this.overlay.innerHTML = `<div class="sheet base">
-      <header><h1>BASE CAMP</h1><div class="readouts"><div><i>Day</i><b>${c.day}</b></div><div><i>Salvage</i><b>${c.salvage}</b></div><div><i>The Pulse</i><b class="p${pulse}">${pulse}</b></div></div></header>
+      <header><h1>BASE CAMP <span>Expedition ${c.expedition}</span></h1><div class="readouts"><div><i>Day</i><b>${c.day}</b></div><div><i>Salvage</i><b>${c.salvage}</b></div><div><i>The Pulse</i><b class="p${pulse}">${pulse}</b></div><div><i>The camp is</i><b class="m${mood}">${MOODS[mood]}</b></div></div></header>
       ${c.night.map((l) => `<p class="night">${esc(l)}</p>`).join('')}
       <div class="cols">
         <section>
-          <h4>The wire</h4>
-          <div class="growth"><i style="width:${c.growth}%"></i></div>
-          <p class="hint">The growth is ${Math.round(c.growth)}% of the way to Operations. It comes on every day you spend. At 100% the base falls.</p>
-          <div class="row"><button class="btn" data-a="burn" ${c.salvage < TUNE.growth.burnCost ? 'disabled' : ''}>Burn it back · ${TUNE.growth.burnCost} salvage</button><span class="hint">It works. Something below notices each time: the Pulse climbs, and the ruin hits harder.</span></div>
+          <h4>The base, and the growth coming in</h4>
+          <svg class="basemap" viewBox="0 0 300 300" role="img" aria-label="Map of the base"><rect width="300" height="300" class="wild"/>${c.modules.map((m) => cell(m.id, m.growth, m.lost)).join('')}${cell('ops', c.growth, false)}</svg>
+          <p class="hint">The growth takes modules one at a time, and you lose what they did. Lost modules let it through to Operations. The wire crew hold it better the more species you understand (${c.guide.filter((k) => k.behaviour).length} of 8).</p>
+          <div class="row"><button class="btn" data-a="burn" ${!bad || c.salvage < TUNE.growth.burnCost ? 'disabled' : ''}>Burn it back${bad ? ` at the ${MODULES[bad.id].name.toLowerCase()}` : ''} · ${TUNE.growth.burnCost}</button><span class="hint">It works. Something below notices each time: the Pulse climbs, and the ruin hits harder.</span></div>
+          ${lostMods.map((m) => `<div class="row"><button class="btn" data-a="reclaim:${m.id}" ${fit ? '' : 'disabled'}>Send ${esc(who.name.split(' ')[0])} to cut the ${MODULES[m.id].name.toLowerCase()} clear</button><span class="hint">Takes the day. It may not work, and it may hurt.</span></div>`).join('')}
           <h4>Workshop</h4>
-          ${UPGRADES.map((u) => { const n = c.upgrades[u.id], cost = u.cost * (n + 1); return `<div class="row"><button class="btn" data-a="buy:${u.id}" ${n >= u.max || c.salvage < cost ? 'disabled' : ''}>${u.name} ${'●'.repeat(n)}${'○'.repeat(u.max - n)}${n >= u.max ? '' : ` · ${cost}`}</button><span class="hint">${u.text}</span></div>`; }).join('')}
+          ${mod(c, 'workshop').lost ? '<p class="hint">The workshop is under the growth. Nothing can be built until someone cuts it clear.</p>' : UPGRADES.map((u) => { const n = c.upgrades[u.id], cost = upgradeCost(c, u.id); return `<div class="row"><button class="btn" data-a="buy:${u.id}" ${n >= u.max || c.salvage < cost ? 'disabled' : ''}>${u.name} ${'●'.repeat(n)}${'○'.repeat(u.max - n)}${n >= u.max ? '' : ` · ${cost}`}</button><span class="hint">${u.text}</span></div>`; }).join('')}
+          <h4>Mess board</h4>
+          ${c.board.slice(0, 3).map((l, i) => `<p class="board ${i ? '' : 'latest'}">${esc(l)}</p>`).join('')}
+          <p class="hint">Nobody measures hope. Time wears it down, and so do names on the wall. What lifts it is what comes home that is no use to anyone.${c.wonders.length ? ` Brought home so far: ${[...new Set(c.wonders.map((id) => WONDERS[id.replace(/\d+$/, '')].title))].join(', ')}.` : ''}</p>
         </section>
         <section>
-          <h4>Who goes down</h4>
-          <div class="roster">${c.roster.map((p, i) => (p.alive ? `<button class="btn who ${i === c.current ? 'on' : ''}" data-a="who:${i}">${esc(p.name)}<span>${p.runs ? `${p.runs} descent${p.runs > 1 ? 's' : ''}` : 'has not been below'}</span></button>` : '')).join('')}</div>
+          <h4>The eight</h4>
+          <p class="hint">One goes down. Everyone else works, unless they are hurt. Whoever goes does not do their job that day.</p>
+          <div class="people">${c.roster.map((p, i) => (p.alive ? `<div class="person ${i === c.current ? 'on' : ''}">
+            <button class="btn who" data-a="who:${i}" ${p.wound > 0 ? 'disabled' : ''}>${esc(p.name)}<span>${p.wound > 0 ? `hurt, ${Math.ceil(p.wound)} day${p.wound > 1 ? 's' : ''}` : i === c.current ? 'going down' : p.runs ? `${p.runs} descent${p.runs > 1 ? 's' : ''}` : 'has not been below'}</span></button>
+            <select data-job="${i}" aria-label="Job for ${esc(p.name)}">${(Object.keys(JOBS) as Job[]).map((j) => `<option value="${j}" ${p.job === j ? 'selected' : ''} ${JOBS[j].needs && mod(c, JOBS[j].needs!).lost ? 'disabled' : ''}>${JOBS[j].name}</option>`).join('')}</select></div>` : '')).join('')}</div>
           <h4>${esc(who.name)} carries</h4>
-          <div class="gear">${itemCard(g.blade, 'Blade')}${itemCard(g.gun, 'Gun')}${itemCard(g.suit, 'Suit')}${g.relic ? `<div class="item" style="--c:#f3fbff"><i>Relic</i><b>${g.relic.known ? RELICS[g.relic.fn].name : `A ${g.relic.form}`}</b><span>${g.relic.known ? RELICS[g.relic.fn].does : 'Nobody knows what it does.'}</span></div>` : ''}</div>
+          <div class="gear">${itemCard(g.blade, 'Blade')}${itemCard(g.gun, 'Gun')}${itemCard(g.suit, 'Suit')}${g.relic ? `<div class="item" style="--c:#f3fbff"><i>Relic</i><b>${g.relic.known ? RELICS[g.relic.fn].name : `A ${g.relic.form}`}</b><span>${g.relic.known ? RELICS[g.relic.fn].does : 'Nobody knows what it does. The lab can work it out, slowly.'}</span></div>` : ''}${c.stock.map((n, sp) => (n > 0 ? `<div class="item" style="--c:#37d3bf"><i>From the lab · ${n}</i><b>${BEHAVIOURS[c.species[sp].behaviour].graft!.name}</b><span>${BEHAVIOURS[c.species[sp].behaviour].graft!.use}</span></div>` : '')).join('')}</div>
           <h4>Field guide</h4>
-          <div class="guide">${c.species.map((s, i) => { const k = c.guide[i]; return k.seen ? `<div><b style="color:hsl(${s.hue} 45% 55%)">${esc(s.name)}</b><span>wakes to ${k.sense ? (s.sense === 'near' ? 'something close' : s.sense === 'light' ? 'torchlight' : 'noise') : '?'}</span><span>${k.behaviour ? BEHAVIOURS[s.behaviour].does : '?'}</span></div>` : '<div class="dim"><b>Not yet met</b></div>'; }).join('')}</div>
+          <div class="guide">${c.species.map((s, i) => { const k = c.guide[i]; return k.seen ? `<div><b style="color:hsl(${s.hue} 45% 55%)">${esc(s.name)}</b><span>wakes to ${k.sense ? (s.sense === 'near' ? 'something close' : s.sense === 'light' ? 'torchlight' : 'noise') : '?'}</span><span>${k.behaviour ? BEHAVIOURS[s.behaviour].does : k.samples ? 'The lab is working on a sample.' : '?'}</span></div>` : '<div class="dim"><b>Not yet met</b></div>'; }).join('')}</div>
           <h4>What lives down there</h4>
           <div class="guide">${(Object.keys(c.bestiary) as EnemyId[]).map((t) => `<div><b>${ENEMIES[t].name || 'The unlit thing'}</b><span>${(c.bestiary[t] ?? 0) >= 2 ? CREATURES[t].trick : 'Seen. Not yet understood.'}</span></div>`).join('') || '<div class="dim"><b>Nothing met yet</b></div>'}</div>
           ${dead.length ? `<h4>The wall</h4>${dead.map((p) => `<p class="hint"><b>${esc(p.name)}</b> ${esc(p.epitaph ?? '')}</p>`).join('')}` : ''}
         </section>
       </div>
-      <footer class="row"><button class="btn ghost" data-a="restart">Abandon expedition</button><span class="grow"></span>
-        ${[1, 2, 3, 4].filter((d) => d <= c.deepest).map((d) => `<button class="btn ${d === c.deepest ? 'go' : ''}" data-a="descend:${d}">Descend to ${LAYERS[d].name}</button>`).join('')}
+      <footer class="row"><button class="btn ghost" data-a="restart">Abandon expedition</button><span class="grow"></span><button class="btn" data-a="wait">Let a day pass</button>
+        ${[1, 2, 3, 4].filter((d) => d <= c.deepest).map((d) => `<button class="btn ${d === c.deepest ? 'go' : ''}" data-a="descend:${d}" ${fit ? '' : 'disabled'}>Descend to ${LAYERS[d].name}</button>`).join('')}
       </footer>
     </div>`;
   }
@@ -124,7 +146,7 @@ export class Hud {
     const e = ENDINGS[c.over!];
     const dead = c.roster.filter((p) => !p.alive);
     this.overlay.innerHTML = `<div class="sheet title end"><p class="eyebrow">Day ${c.day}</p><h1 class="${c.over === 'fallen' || c.over === 'spent' ? 'bad' : 'white'}">${e.title.toUpperCase()}</h1><p class="lede">${e.text}</p>
-      <h4>The wall</h4>${dead.length ? dead.map((p) => `<p class="hint"><b>${esc(p.name)}</b> ${esc(p.epitaph ?? '')}</p>`).join('') : '<p class="hint">Nobody. All eight.</p>'}
+      <p class="hint">Expedition ${c.expedition}. ${c.wonders.length} wonder${c.wonders.length === 1 ? '' : 's'} brought home. The next expedition will find what this one left.</p><h4>The wall</h4>${dead.length ? dead.map((p) => `<p class="hint"><b>${esc(p.name)}</b> ${esc(p.epitaph ?? '')}</p>`).join('') : '<p class="hint">Nobody. All eight.</p>'}
       <div class="row"><button class="btn go" data-a="begin">Follow the signal again</button></div></div>`;
   }
 
