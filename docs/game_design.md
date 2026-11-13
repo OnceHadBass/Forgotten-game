@@ -1,4 +1,4 @@
-# Project Brief: Untitled Alien Planet Roguelite
+# Project Brief: Forgotten
 
 ## Vision
 
@@ -6,7 +6,35 @@ An isometric tactical exploration roguelite set on a hostile alien world, played
 
 The feel sits between *Alien Breed*, *Space Hulk*, *Stalker*, *Subnautica*, and *XCOM*, with thematic atmosphere borrowed from *Annihilation*, *Roadside Picnic*, *Solaris*, and *Blame!*.
 
-The tone is cautious, dark and solitary. When a system pulls toward loud power fantasy, it loses.
+The tone is cautious, dark and solitary. Power is allowed and never free: when power is free, the game loses.
+
+## Decisions of November 2026
+
+Taken after the design review (`design_review.md`), with Nathan's go-ahead to decide. Where these disagree with older sections below, these win. A playable prototype of the campaign built on them is in `prototypes/campaign/`.
+
+**1. Loud power costs.** The old rule was "when a system pulls toward loud power fantasy, it loses". The rule is now: *when power is free, the game loses.* The quiet game is the default. Power is something you spend, and the bill is noise, light, sickness or the Pulse. The relic that clears a room also changes the pitch of something far below.
+
+**2. Three strands of reward, three characters.**
+
+- **Human kit is small, dull and dependable.** About five weapons with one upgrade step each, no mod system, plus medkits, probes, cells and rounds. It is the floor you stand on, never the prize. The fabricated tiers T2/T3, the archetype list and weapon and armour mods are cut.
+- **Plant pieces are alive, strange and temporary.** A piece cut from a plant keeps one of the plant's behaviours for a while as a usable item (a *graft*): a shrieker bulb is a decoy, creeper gum seals a door, a light pod is a light that is not your torch. You can only harvest what the field guide knows the plant does, so knowledge is the crafting gate. Grafts die when the run ends unless the lab has studied the species, after which the base can culture them. Looks are dealt per campaign, so each campaign's toolkit is rediscovered. Base synthesis becomes "keep it alive", not a second recipe list.
+- **Relics are powerful, not understood and irreplaceable.** A relic's form says nothing about its function, which is dealt per campaign. You learn what it does by using it below (fast, dangerous) or on the lab bench (slow, costs days). A live relic is the only white light in the ruin: Warden white is the legendary drop. A relic carried by someone who dies stays with the body until someone goes and gets it.
+
+**3. The surprise budget.** First encounters are where the fear lives, and a fixed pool is spent in a few hours. Unknowns renew: below the Threshold, bodies carry an organ from a second species and wake to what either part senses (chimeras); the ruin's growth shifts towards species that mind how you usually travel; a high Pulse has everything sleeping lightly.
+
+**4. The base is a place, and its people have jobs.** Encroachment takes modules, not points: lose the lab and there is no research until someone clears it with a blade. Lost modules let the growth through to Operations; if that fills, the base falls. What comes at the wire are the species you have met below, and the wire crew can only hold what the field guide understands: field knowledge is the defence manual. Everyone not sent below works (lab, wire, infirmary, fabricator), so sending your best biologist down stalls the lab. The first-pass roster is ten, not twenty-five.
+
+**5. Hope is carried by wonders.** There is no hope bar. It is read off the mess board and off who turns up. Time wears it down, and so do deaths and lost modules. What lifts it is what the operative brings home that is no use to anyone: something seen, a flask of rain, a chord the plants make. Low hope means poorer work and, at the bottom, people walking out through the wire at night.
+
+**6. The growth is the lock.** Not a planet-mind: an immune response the Wardens bred around the Vault. Encroachment is that system digesting a foreign body, the base. Herbicide works, and every use raises the Pulse (below, things sleep lightly and hit harder), and nobody at base knows why until the glyphs are read. The three endings follow from how the base defended itself: Reinforcement means taking up the tending and stopping the burning.
+
+**7. Every expedition is forgotten, and found.** When a campaign ends, the next one finds its camp in the Threshold: the tally marks, the memorial, a locker. The Wardens followed the signal, the earlier humans followed it, so did you. A small ledger outside the save slots carries only this: no power crosses between campaigns.
+
+**8. Reading the walls.** Warden literacy is a second field guide. Glyph readings are translated at the lab; as literacy rises, signs that were always on the walls become legible (STORES, KEEP, DO NOT WAKE), sealed stores open, and at the top the maintenance protocol can be read.
+
+**9. Order of work.** Breadth before depth: a thin whole campaign first (the prototype proves the shape), then the loot slice (grafts, one dealt relic), then more things that move, then renewal. See `technical_design.md` §7.
+
+---
 
 ## The Core Conceit
 
@@ -493,6 +521,8 @@ Sampling from corpses within a window post-kill. Each species feeds a parallel r
 
 ## Weapons: Three Tiers
 
+> **Superseded in part (November 2026, decision 2).** The standard fabricated tier is cut to a small dependable kit with no sub-tiers or mods. Experimental weapons become grafts. Relic functions are dealt per campaign and unknown until used or studied; the named relics below are the pool of functions, not a fixed list of finds.
+
 ### Tier system overview
 
 **Standard fabricated weapons** — researched and printed at base, the resupplyable workhorse arsenal. Players use these as their default loadout. Ammo is fabricable. These last forever as long as you keep printing them.
@@ -718,6 +748,8 @@ Each branch has T1/T2/T3 progression with branching paths. Two playthroughs shou
 - **Garden** (optional) — companion seedling cultivation
 
 ### Encroachment
+
+> **Superseded in part (November 2026, decisions 4 to 6).** Encroachment takes modules rather than filling one meter, is fought with field knowledge, and burning it back raises the Pulse.
 
 The containment meter. Resources push it back. Sources of containment materials:
 

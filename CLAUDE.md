@@ -161,6 +161,7 @@ Don't build multiple systems in one session. Don't carry untested work forward.
 
 **Phase:** 3 — Mission lifecycle (Phase 2, first entity systems, is complete)
 **Last completed session:** Session 10 — Cache and uplink (27 Sept 2026)
+**Design decisions, November 2026:** see the top of `docs/game_design.md` (loud power costs; small human kit, grafts, dealt relics; the base as modules with jobs; hope from wonders; the growth is the lock; expeditions found by the next) and the revised order in `docs/technical_design.md` §7. A playable campaign prototype is in `prototypes/campaign/` (`npm run check`, `npm run build`); it is separate from the game and shares no code with `src/` yet.
 **Next planned:** the sound pass: first settle with Nathan how to source recordings (shortlist: `docs/session_notes/sound-shortlist.md`); Nathan plays 0.12.1; then stage 3b (tight tunnels, etched glyphs, expedition props and remains; your own dead is a save change); an operative session of its own. Session 11 — Base shell after the art slices Nathan wants first
 
 **0.12.1 playtest fixes** (end of `docs/session_notes/plant-pass.md`):

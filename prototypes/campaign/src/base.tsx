@@ -310,11 +310,10 @@ function Deploy({ c, act, close }: { c: Campaign; act: Act; close: () => void })
   );
 }
 
-export function Base({ c, act, restart }: { c: Campaign; act: Act; restart: () => void }) {
+export function Base({ c, act, restart, seenDay, setSeenDay }: { c: Campaign; act: Act; restart: () => void; seenDay: number; setSeenDay: (n: number) => void }) {
   const [tab, setTab] = useState<Tab>('people');
   const [picked, setPicked] = useState<ModuleId>('ops');
   const [deploying, setDeploying] = useState(false);
-  const [seenDay, setSeenDay] = useState(c.day);
   const [sure, setSure] = useState(false);
   const s = c.stores;
   const level = pulseLevel(c);

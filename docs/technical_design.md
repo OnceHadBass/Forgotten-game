@@ -480,6 +480,16 @@ Each session produces a working, playable, committed increment. The game has a c
 
 **Art direction pass (between 10 and 11):** with a whole run playable, settle the look before content multiplies. A first pass shipped in 0.9.1 (`docs/art_direction.md`: INSIDE-style grade, haze, volumetric torch beam and dust, contact shade, per-layer looks); the full pass takes on what that note lists as open.
 
+### Revised order (November 2026)
+
+The phases below were written depth-first. After the design review the order is breadth-first for one pass; the rules are prototyped and bot-tested in `prototypes/campaign/` (pure seeded TypeScript: `game.ts` for the base, `run.ts` for the descent in miniature).
+
+1. **Thin whole campaign** (replaces the first pass of Sessions 11–17): base as modules that can be lost, ten people with jobs, days, growth at the wire driven by field knowledge, hope, one use for the haul, both failure states. Port `prototypes/campaign/src/game.ts` into `src/game/` behind the save migration (rule 6).
+2. **Loot slice:** grafts (an item type pointing at one behaviour component), one dealt relic, the white light.
+3. **Movers and escape tools:** three creatures (a hunter by sound, one that moves when unlit, a grazer), doors that shut, a shove, a flare.
+4. **Renewal:** site memory, chimeras, the cross-campaign ledger.
+5. Deepen whatever playtests show is carrying the game. The Pulse as a forecastable cycle, augments and drones only if something is missing without them.
+
 ### Phase 4: Base hub (11–13)
 
 **Session 11 — Base shell:** base screens (Preact, as the menus), base ↔ mission transitions, campaign days, save on transition

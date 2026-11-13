@@ -20,7 +20,7 @@ export const TUNE = {
   opsPerLost: 5,
   speciesCost: 4,
   relicCost: 4,
-  readingCost: 1.4,
+  readingCost: 2.2,
   literacy: [6, 15, 27],
   ascent: { salvage: 45, relicCells: 2 },
 } as const;
