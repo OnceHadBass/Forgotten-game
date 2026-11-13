@@ -42,6 +42,7 @@ const RECIPES: Record<string, Layer[]> = {
   stabilise: [{ tone: 'square', f0: 110, f1: 440, dur: 0.3, vol: 0.4 }, { noise: 'lowpass', f0: 300, f1: 2000, dur: 0.4, vol: 0.5 }],
   death: [{ tone: 'sawtooth', f0: 200, f1: 30, dur: 1.4, vol: 0.6 }, { noise: 'lowpass', f0: 800, f1: 60, dur: 1.4, vol: 0.5 }],
   unlit: [{ tone: 'sine', f0: 60, f1: 30, dur: 0.9, vol: 1 }, { noise: 'bandpass', f0: 300, f1: 100, dur: 0.7, vol: 0.5, q: 4 }],
+  pulse: [{ tone: 'sine', f0: 48, f1: 96, dur: 2.6, vol: 0.7, attack: 0.9 }, { tone: 'sine', f0: 330, f1: 495, dur: 2.2, vol: 0.12, attack: 1.2 }],
   step: [{ noise: 'lowpass', f0: 500, f1: 200, dur: 0.05, vol: 0.12 }],
   voice: [{ tone: 'triangle', f0: 1, f1: 0.94, dur: 0.22, vol: 0.2, attack: 0.04 }],
   heart: [{ tone: 'sine', f0: 60, f1: 40, dur: 0.12, vol: 0.8 }, { tone: 'sine', f0: 55, f1: 38, dur: 0.12, vol: 0.5, at: 0.22 }],

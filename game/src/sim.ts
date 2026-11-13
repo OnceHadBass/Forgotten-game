@@ -41,6 +41,7 @@ export function createWorld(camp: Campaign, depth: number, carry?: Player): Worl
     camp, level, depth, rng, time: 0, nextId: 1, player, enemies: [], plants: [], props: [], loot: [], projs: [], zones: [],
     fx: [], flow: new Int16Array(level.w * level.h), flowT: 0, explored: new Uint8Array(level.w * level.h), revealed: false,
     hitstop: 0, still: 0, prompt: null, near: null, hover: null, outcome: null, liftT: -1, said: {}, boss: null, cause: '',
+    wave: -1, waveT: 32, waveX: level.rooms[level.hatch].cx, waveZ: level.rooms[level.hatch].cz, breaches: [],
   };
   populate(w);
   w.fx.push({ k: 'say', t: pick(rng, THOUGHTS.start) });
@@ -68,7 +69,7 @@ function spot(w: World, r: Room, gap: number, margin = 0): { x: number; z: numbe
 
 export function addPlant(w: World, sp: number, x: number, z: number): Plant {
   const scale = range(w.rng, 0.85, 1.25);
-  const p: Plant = { id: w.nextId++, sp, x, z, r: 0.55 * scale, scale, rot: range(w.rng, 0, 6.28), hp: 26 * scale, mood: 'asleep', t: 0, lit: 0, calm: 0, cd: range(w.rng, 0, 1), fuse: -1, pool: 40, spawned: 0, dead: false, flash: 0, wind: range(w.rng, 0, 6.28) };
+  const p: Plant = { id: w.nextId++, sp, x, z, r: 0.55 * scale, scale, rot: range(w.rng, 0, 6.28), hp: 26 * scale, mood: 'asleep', t: 0, lit: 0, calm: 0, cd: range(w.rng, 0, 1), fuse: -1, pool: 40, spawned: 0, dead: false, flash: 0, wind: range(w.rng, 0, 6.28), surge: 0 };
   w.plants.push(p);
   return p;
 }
@@ -106,7 +107,7 @@ function populate(w: World): void {
     return;
   }
 
-  let glyph = false;
+  let glyph = false, tended = false;
   for (const r of l.rooms) {
     const area = r.w * r.h;
     if (r.kind === 'hatch') addProp(w, 'hatch', r.cx, r.cz);
@@ -116,6 +117,18 @@ function populate(w: World): void {
     if (!glyph && (r.kind === 'hall' || r.kind === 'garden')) { glyph = true; addProp(w, 'glyph', (r.x + r.w / 2) * T, r.y * T + 0.3); }
     for (let i = 0, n = 1 + int(h, 3); i < n; i++) { const p = spot(w, r, 0.6); if (p) addProp(w, 'urn', p.x, p.z); }
 
+    if (depth === 1 && w.breaches.length < 4 && r.kind !== 'relic' && chance(h, 0.45)) { const p = spot(w, r, 1.2, 1); if (p) w.breaches.push(p); }
+    if (r.kind === 'garden' && !tended) {
+      // The tended garden: rows, evenly spaced, and something still looking after them.
+      tended = true;
+      for (let gy = r.y + 1; gy < r.y + r.h - 1; gy += 2) for (let gx = r.x + 1; gx < r.x + r.w - 1; gx++) {
+        const x = (gx + 0.5) * T, z = (gy + 0.5) * T;
+        if (free(w, x, z, 0.7) && dist(x, z, r.cx, r.cz) > 1.5) addPlant(w, chance(h, 0.4) ? pick(h, [by('mend'), by('lantern')]) : pick(h, species), x, z);
+      }
+      addEnemy(w, 'warden', r.cx, r.cz);
+      pack(w, r, 'grazer', 4);
+      continue;
+    }
     const plants = Math.floor(area / (r.kind === 'garden' ? 5 : 10)) + (depth > 1 ? 1 : 0);
     for (let i = 0; i < plants; i++) {
       const p = spot(w, r, 0.9);
@@ -140,6 +153,7 @@ function populate(w: World): void {
       if (roll === 0) pack(w, r, 'mite', 5 + depth * 2);
       else if (roll === 1) { pack(w, r, 'skulker', 1 + (depth > 1 ? 1 : 0)); if (depth > 1) pack(w, r, 'spitter', 1); }
       else if (roll === 2) { pack(w, r, 'skulker', 1); pack(w, r, 'mite', 3); }
+      else if (roll === 3) pack(w, r, 'grazer', 3 + int(h, 4));
       if (big) pack(w, r, 'husk', 1);
     }
   }
@@ -189,7 +203,8 @@ export function noise(w: World, x: number, z: number, radius: number, own = true
   if (own && radius >= 9) w.fx.push({ k: 'ring', x, z, r: radius, t: 0.5, c: YELLOW });
   for (const p of w.plants) if (!p.dead && w.camp.species[p.sp].sense === 'sound' && dist(p.x, p.z, x, z) < radius) wake(w, p, 'sound');
   for (const e of w.enemies) {
-    if (e.dead || e.type === 'unlit' || dist(e.x, e.z, x, z) > radius * 1.15) continue;
+    if (e.dead || e.type === 'unlit' || e.type === 'warden' || dist(e.x, e.z, x, z) > radius * 1.15) continue;
+    if (e.type === 'grazer') { e.alert = 3; e.tx = x; e.tz = z; continue; }
     e.alert = Math.max(e.alert, 5);
     if (e.state === 'idle') { e.state = 'chase'; e.tx = x; e.tz = z; }
   }
@@ -215,6 +230,13 @@ export function hurtPlayer(w: World, amount: number, cause: string, fx = 0, fz =
   return true;
 }
 
+function anger(w: World, e: Enemy): void {
+  if (e.phase === 1) return;
+  e.phase = 1; e.state = 'chase'; e.alert = 999;
+  w.fx.push({ k: 'sound', s: 'charge', x: e.x, z: e.z }, { k: 'ring', x: e.x, z: e.z, r: 3, t: 0.6, c: WHITE });
+  sayOnce(w, 'angry');
+}
+
 function drop(w: World, kind: LootKind, x: number, z: number, n = 1, extra: Partial<Loot> = {}): void {
   const a = range(w.rng, 0, 6.28), s = range(w.rng, 2, 5);
   w.loot.push({ id: w.nextId++, kind, x, z, vx: Math.cos(a) * s, vz: Math.sin(a) * s, t: 0, n, item: null, relic: null, gone: false, ...extra });
@@ -232,7 +254,8 @@ function spill(w: World, x: number, z: number, rich: number): void {
 export function hurtEnemy(w: World, e: Enemy, amount: number, kx: number, kz: number, knock: number, crit = false): void {
   if (e.dead) return;
   e.hp -= amount; e.flash = 0.14; e.alert = Math.max(e.alert, 7);
-  if (e.state === 'idle') e.state = 'chase';
+  if (e.type === 'warden') anger(w, e);
+  if (e.state === 'idle' && e.type !== 'grazer' && e.type !== 'warden') e.state = 'chase';
   w.fx.push({ k: 'hit', x: e.x, z: e.z, n: Math.round(amount), crit, who: 'enemy' });
   const d = ENEMIES[e.type];
   if (amount >= d.poise * (e.elite ? 1.6 : 1) && e.type !== 'tender') {
@@ -243,6 +266,8 @@ export function hurtEnemy(w: World, e: Enemy, amount: number, kx: number, kz: nu
   e.dead = true; e.deadT = 0; w.player.kills++;
   w.fx.push({ k: 'gore', x: e.x, z: e.z, n: e.type === 'mite' ? 5 : 16 }, { k: 'sound', s: e.type === 'mite' ? 'pop' : 'kill', x: e.x, z: e.z });
   if (has(w.camp.gear.blade, 'leeching')) w.player.hp = Math.min(w.player.maxHp, w.player.hp + 3);
+  if (e.type === 'grazer') { w.player.kills--; return; }
+  if (e.type === 'warden') { drop(w, 'item', e.x, e.z, 1, { item: rollItem(w.rng, w.depth, 0.75) }); w.fx.push({ k: 'burst', x: e.x, z: e.z, r: 4, c: WHITE }); }
   if (e.type === 'mite') { if (chance(w.rng, 0.25)) drop(w, 'salvage', e.x, e.z, 1); }
   else spill(w, e.x, e.z, d.loot * (e.elite ? 3 : 1) + 0.6);
   if (e.elite || e.type === 'husk' || e.type === 'unlit') drop(w, 'item', e.x, e.z, 1, { item: rollItem(w.rng, w.depth, e.elite ? 0.35 : 0.1) });
@@ -271,6 +296,7 @@ export function hurtPlant(w: World, p: Plant, amount: number): void {
   p.hp -= amount; p.flash = 0.14;
   w.fx.push({ k: 'leaves', x: p.x, z: p.z, c: w.camp.species[p.sp].hue, n: 5 }, { k: 'hit', x: p.x, z: p.z, n: Math.round(amount), crit: false, who: 'plant' });
   wake(w, p, 'hurt');
+  for (const e of w.enemies) if (e.type === 'warden' && !e.dead && dist(e.x, e.z, p.x, p.z) < 16) anger(w, e);
   if (p.hp <= 0) killPlant(w, p, true);
 }
 
@@ -620,6 +646,7 @@ function stepPlayer(w: World, input: Input, dt: number): void {
 
 function stepPlants(w: World, dt: number): void {
   const pl = w.player, alive = pl.state !== 'dead';
+  const grazers = w.enemies.filter((e) => e.type === 'grazer' && !e.dead);
   for (const p of w.plants) {
     if (p.dead) continue;
     p.flash -= dt; p.cd -= dt;
@@ -627,7 +654,11 @@ function stepPlants(w: World, dt: number): void {
     const dp = dist(p.x, p.z, pl.x, pl.z);
     if (dp > 34) continue;
     let stim = false;
+    p.surge = Math.max(0, p.surge - dt * 1.6);
+    if (w.wave >= 0 && Math.abs(dist(p.x, p.z, w.waveX, w.waveZ) - w.wave) < 2.5) p.surge = 1;
     if (s.sense === 'near' && alive && dp < 2.7) { stim = true; wake(w, p, 'near'); }
+    // The ruin does not wait for you: anything feeding too close wakes it as well.
+    if (s.sense === 'near' && p.mood === 'asleep' && grazers.some((e) => dist(e.x, e.z, p.x, p.z) < 1.5)) wake(w, p, 'near');
     if (s.sense === 'light') {
       if (dp < TUNE.torch.range + 8 && lit(w, p.x, p.z)) { p.lit += dt; stim = true; if (p.lit > TUNE.light.wake) wake(w, p, 'light'); }
       else p.lit = Math.max(0, p.lit - dt);
@@ -672,10 +703,10 @@ function stepPlants(w: World, dt: number): void {
             if (b === 'spines') hurtPlayer(w, 17, `the ${s.name}`, p.x, p.z);
             else if (pl.invuln <= 0) { pl.snared = 1.5; pl.cell = Math.max(0, pl.cell - 14); hurtPlayer(w, 6, `the ${s.name}`); }
           }
-          for (const e of w.enemies) { const d = dist(e.x, e.z, p.x, p.z); if (!e.dead && d < reach + e.r && e.type !== 'tender') { hurtEnemy(w, e, b === 'spines' ? 22 : 8, (e.x - p.x) / (d || 1), (e.z - p.z) / (d || 1), 4); if (b === 'snare') e.slow = 0.15; } }
+          for (const e of w.enemies) { const d = dist(e.x, e.z, p.x, p.z); if (!e.dead && d < reach + e.r && e.type !== 'tender' && e.type !== 'warden') { if (e.type === 'grazer' && seen(w, p.x, p.z)) sayOnce(w, 'eaten'); hurtEnemy(w, e, b === 'spines' ? 22 : 8, (e.x - p.x) / (d || 1), (e.z - p.z) / (d || 1), 4); if (b === 'snare') e.slow = 0.15; } }
         }
       } else if (p.cd <= 0) {
-        const target = (alive && dp < reach) || w.enemies.some((e) => !e.dead && e.type !== 'mite' && e.type !== 'tender' && dist(e.x, e.z, p.x, p.z) < reach);
+        const target = (alive && dp < reach) || w.enemies.some((e) => !e.dead && e.type !== 'mite' && e.type !== 'tender' && e.type !== 'warden' && dist(e.x, e.z, p.x, p.z) < reach);
         if (target) { p.fuse = 0.42; p.cd = b === 'spines' ? 1.5 : 3.2; p.calm = 0; w.fx.push({ k: 'ring', x: p.x, z: p.z, r: reach, t: 0.42, c: hsl(s.glow) }); }
       }
     }
@@ -723,7 +754,7 @@ function stepEnemies(w: World, dt: number): void {
     const dp = dist(e.x, e.z, pl.x, pl.z);
     if (dp > 40 && e.type !== 'tender') continue;
     const sees = alive && dp < d.sight * (pl.torch ? 1.7 : 0.75) && los(l, e.x, e.z, pl.x, pl.z);
-    if (sees) { if (e.alert <= 0 && e.type !== 'mite' && e.type !== 'unlit') w.fx.push({ k: 'sound', s: 'growl', x: e.x, z: e.z }); e.alert = 6; e.tx = pl.x; e.tz = pl.z; }
+    if (sees) { if (e.alert <= 0 && (e.type === 'skulker' || e.type === 'husk' || e.type === 'spitter')) w.fx.push({ k: 'sound', s: 'growl', x: e.x, z: e.z }); e.alert = 6; e.tx = pl.x; e.tz = pl.z; }
     const speed = d.speed * slow * (e.elite ? 1.1 : 1);
     const lured = decoy && e.type !== 'unlit' && e.type !== 'tender' && dist(e.x, e.z, decoy.x, decoy.z) < 18;
     const gx = lured ? decoy.x : sees ? pl.x : e.tx, gz = lured ? decoy.z : sees ? pl.z : e.tz;
@@ -741,6 +772,54 @@ function stepEnemies(w: World, dt: number): void {
     }
 
     if (e.type === 'tender') { stepTender(w, e, dt, dp); continue; }
+
+    if (e.type === 'grazer') {
+      if (alive && dp < 4.5 && sees) { e.alert = 2.5; e.tx = pl.x; e.tz = pl.z; sayOnce(w, 'grazer'); }
+      if (e.alert > 0) { // scatter, away from whatever startled it
+        const a = Math.atan2(e.z - e.tz, e.x - e.tx) + Math.sin(w.time * 9 + e.id) * 0.8;
+        e.face = a;
+        moveCircle(l, e, Math.cos(a) * speed * 1.7 * dt, Math.sin(a) * speed * 1.7 * dt, e.r, true);
+        e.wander = 0;
+        continue;
+      }
+      e.wander -= dt;
+      if (e.wander < 0) { // drift to something glowing and feed
+        e.wander = range(w.rng, 2.5, 7);
+        const near = w.plants.filter((q) => !q.dead && dist(q.x, q.z, e.x, e.z) < 11 && los(l, e.x, e.z, q.x, q.z));
+        const q = near.length ? pick(w.rng, near) : null;
+        const a = range(w.rng, 0, 6.28);
+        e.homeX = q ? q.x + Math.cos(a) * 1.1 : e.x + Math.cos(a) * 3; e.homeZ = q ? q.z + Math.sin(a) * 1.1 : e.z + Math.sin(a) * 3;
+      }
+      if (dist(e.x, e.z, e.homeX, e.homeZ) > 0.3 && los(l, e.x, e.z, e.homeX, e.homeZ)) steer(w, e, e.homeX, e.homeZ, speed * 0.55, dt);
+      continue;
+    }
+
+    if (e.type === 'warden') {
+      if (e.phase === 0) { // gardening: walk the rows, settle what is restless
+        if (dp < 11 && sees) sayOnce(w, 'garden');
+        e.wander -= dt;
+        const rows = w.plants.filter((q) => !q.dead && dist(q.x, q.z, e.homeX, e.homeZ) < 12);
+        if (e.wander < 0 && rows.length) { e.wander = range(w.rng, 3, 5); const q = pick(w.rng, rows); e.tx = q.x; e.tz = q.z + 1.1; if (q.mood === 'awake' && q.fuse < 0) q.mood = 'asleep'; q.hp = Math.min(26 * q.scale, q.hp + 10); }
+        if (dist(e.x, e.z, e.tx, e.tz) > 0.3) steer(w, e, e.tx, e.tz, speed * 0.6, dt);
+        continue;
+      }
+      if (e.state === 'windup') {
+        e.t -= dt;
+        if (e.t <= 0) {
+          const len = rayWall(l, e.x, e.z, Math.cos(e.face), Math.sin(e.face), 14);
+          const t = (pl.x - e.x) * Math.cos(e.face) + (pl.z - e.z) * Math.sin(e.face);
+          const off = Math.abs((pl.x - e.x) * Math.sin(e.face) - (pl.z - e.z) * Math.cos(e.face));
+          w.fx.push({ k: 'shot', x: e.x, z: e.z, x2: e.x + Math.cos(e.face) * len, z2: e.z + Math.sin(e.face) * len }, { k: 'sound', s: 'lash', x: e.x, z: e.z });
+          if (t > 0 && t < len && off < 0.7) hurtPlayer(w, d.dmg, 'the gardener', e.x, e.z);
+          e.state = 'recover'; e.t = d.recover;
+        }
+        continue;
+      }
+      if (e.state === 'recover') { e.t -= dt; if (e.t <= 0) e.state = 'chase'; continue; }
+      if (sees && dp < d.range) { e.state = 'windup'; e.t = d.windup; e.face = Math.atan2(pl.z - e.z, pl.x - e.x); w.fx.push({ k: 'sound', s: 'charge', x: e.x, z: e.z }, { k: 'ring', x: e.x, z: e.z, r: 1.6, t: d.windup, c: WHITE }); }
+      else steer(w, e, pl.x, pl.z, speed, dt);
+      continue;
+    }
 
     if (e.state === 'idle') {
       if (e.alert > 0) { e.state = 'chase'; continue; }
@@ -909,6 +988,7 @@ function explore(w: World): void {
     if (kind === 'hatch') sayOnce(w, 'hatch');
   }
   for (const q of w.props) if (q.kind === 'body' && !q.used && dist(q.x, q.z, p.x, p.z) < 6) sayOnce(w, 'body');
+  for (const q of w.breaches) if (dist(q.x, q.z, p.x, p.z) < 5) sayOnce(w, 'breach');
 }
 
 export function step(w: World, input: Input, dt: number): void {
@@ -919,6 +999,13 @@ export function step(w: World, input: Input, dt: number): void {
   const slow = w.still > 0 ? 0.22 : 1;
   w.flowT -= dt;
   if (w.flowT <= 0) { w.flowT = 0.25; distances(w.level, tx(w.player.x), tx(w.player.z), w.flow, 34); explore(w); }
+  w.waveT -= dt;
+  if (w.waveT <= 0 && w.depth < 4) {
+    w.waveT = range(w.rng, 70, 110) / (1 + w.camp.pulse * 0.4); w.wave = 0;
+    w.fx.push({ k: 'sound', s: 'pulse', x: w.player.x, z: w.player.z }, { k: 'shake', n: 0.25 });
+    sayOnce(w, 'pulse');
+  }
+  if (w.wave >= 0) { w.wave += 26 * dt; if (w.wave > 160) w.wave = -1; }
   stepPlants(w, dt * slow);
   stepEnemies(w, dt * slow);
   stepZones(w, dt * slow);
@@ -946,6 +1033,7 @@ export function settle(w: World): string[] {
     who.runs++;
     c.salvage += p.salvage;
     lines.push(`${who.name} came up on the lift with ${p.salvage} salvage${p.samples ? ` and ${p.samples} sample${p.samples > 1 ? 's' : ''}` : ''}.`);
+    if (p.kills > 0) lines.push(`${p.kills} thing${p.kills > 1 ? 's' : ''} killed below. The ruin will have noticed.`);
   }
   c.fallen = c.fallen.filter((f) => f.depth > 0);
   c.night = lines;

@@ -4,13 +4,14 @@
 
 import * as THREE from 'three';
 import { BLADES, LAYERS, RARITY_COLOUR, T, TUNE } from './data';
-import { THICKET, WALL, centre, idx, tx } from './level';
-import { creature, operative, plantGeometry, propMesh, srgb, thicketGeometry } from './models';
+import { FLOOR, THICKET, WALL, centre, idx, tx } from './level';
+import { creature, operative, plantGeometry, propMesh, srgb, thicketGeometry, tuftGeometry } from './models';
 import type { Creature, PlantGeo, Rig } from './models';
 import type { Fx, World } from './state';
 
 const WALL_H = 2.7, CUT = 0.2, VIEW = 16.5;
 const CAM = new THREE.Vector3(1, 1.25, 1).normalize().multiplyScalar(60);
+const GRAZER = new THREE.Color(0x7ff0e0), WARDEN = new THREE.Color(0xf3fbff), DAY = new THREE.Color(0xbcd4e6);
 const M = new THREE.Matrix4(), P = new THREE.Vector3(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), C = new THREE.Color();
 
 function canvasTexture(size: number, draw: (g: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
@@ -209,6 +210,37 @@ export class View {
     tcells.forEach((cell, n) => { this.thicketAt.set(cell, n); this.thickets!.setMatrixAt(n, M.compose(P.set(centre(cell % l.w), 0, centre((cell / l.w) | 0)), Q.setFromAxisAngle(P.clone().set(0, 1, 0), rnd() * 6), S.set(1, 0.9 + rnd() * 0.4, 1))); });
     this.thickets.frustumCulled = false;
     this.level.add(this.thickets);
+    // Undergrowth: thick along the walls, round every plant and under the daylight.
+    const spots: [number, number, number][] = [];
+    const wallNear = (x: number, y: number): [number, number] | null => { for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) if (l.tiles[idx(l, x + dx, y + dy)] === WALL) return [dx, dy]; return null; };
+    const rocks: [number, number, number][] = [];
+    for (let y = 1; y < l.h - 1; y++) for (let x = 1; x < l.w - 1; x++) {
+      if (l.tiles[idx(l, x, y)] !== FLOOR) continue;
+      const edge = wallNear(x, y);
+      if (edge) {
+        for (let i = 0, n = rnd() < 0.6 ? 1 + Math.floor(rnd() * 3) : 0; i < n; i++) spots.push([centre(x) + edge[0] * (0.45 + rnd() * 0.45) + (edge[1] ? rnd() * 1.8 - 0.9 : 0), centre(y) + edge[1] * (0.45 + rnd() * 0.45) + (edge[0] ? rnd() * 1.8 - 0.9 : 0), 0.7 + rnd() * 0.9]);
+        for (let i = 0, n = rnd() < 0.3 ? 1 + Math.floor(rnd() * 3) : 0; i < n; i++) rocks.push([centre(x) + edge[0] * (0.6 + rnd() * 0.3) + (edge[1] ? rnd() * 1.8 - 0.9 : 0), centre(y) + edge[1] * (0.6 + rnd() * 0.3) + (edge[0] ? rnd() * 1.8 - 0.9 : 0), 0.5 + rnd() * 1.3]);
+      } else if (rnd() < 0.1) spots.push([centre(x) + rnd() * 1.6 - 0.8, centre(y) + rnd() * 1.6 - 0.8, 0.5 + rnd() * 0.6]);
+    }
+    for (const p of w.plants) for (let i = 0; i < 4; i++) { const a = rnd() * 6.28, d = 0.5 + rnd() * 0.9; spots.push([p.x + Math.cos(a) * d, p.z + Math.sin(a) * d, 0.6 + rnd() * 0.8]); }
+    for (const b of w.breaches) for (let i = 0; i < 26; i++) { const a = rnd() * 6.28, d = rnd() * 2.6; spots.push([b.x + Math.cos(a) * d, b.z + Math.sin(a) * d, 0.9 + rnd() * 1.1]); }
+    const tufts = new THREE.InstancedMesh(tuftGeometry(), this.bodyMat, Math.max(1, spots.length));
+    tufts.count = spots.length;
+    spots.forEach(([x, z, sc], n) => { tufts.setMatrixAt(n, M.compose(P.set(x, 0, z), Q.setFromAxisAngle(S.set(0, 1, 0), rnd() * 6.28), S.set(sc, sc * (0.8 + rnd() * 0.6), sc))); tufts.setColorAt(n, C.setRGB(0.7 + rnd() * 0.6, 0.8 + rnd() * 0.5, 0.7 + rnd() * 0.5)); });
+    tufts.receiveShadow = true; tufts.frustumCulled = false;
+    const rubble = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.17, 0), new THREE.MeshStandardMaterial({ color: new THREE.Color(look.wall).multiplyScalar(1.1), roughness: 0.95, flatShading: true }), Math.max(1, rocks.length));
+    rubble.count = rocks.length;
+    rocks.forEach(([x, z, sc], n) => rubble.setMatrixAt(n, M.compose(P.set(x, 0.07 * sc, z), Q.setFromAxisAngle(S.set(rnd(), rnd(), rnd()).normalize(), rnd() * 6), S.set(sc, sc * 0.7, sc * (0.7 + rnd() * 0.6)))));
+    rubble.castShadow = true; rubble.receiveShadow = true; rubble.frustumCulled = false;
+    this.level.add(tufts, rubble);
+
+    // Daylight through the broken roof: a shaft and a pool, no light of its own beyond the pooled one.
+    for (const b of w.breaches) {
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 2.0, 10, 18, 1, true).translate(0, 5, 0), new THREE.MeshBasicMaterial({ color: 0xbcd4e6, transparent: true, opacity: 0.075, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+      const pool = new THREE.Mesh(new THREE.PlaneGeometry(7, 7).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: this.glowMap, color: 0x9fb8c8, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+      shaft.position.set(b.x, 0, b.z); pool.position.set(b.x, 0.05, b.z);
+      this.level.add(shaft, pool);
+    }
     this.target.set(w.player.x, 0, w.player.z);
   }
 
@@ -309,7 +341,7 @@ export class View {
     this.cutaway(w, dt);
     const lights: { x: number; z: number; c: THREE.Color; power: number }[] = [];
     this.syncPlants(w, dt, lights);
-    this.syncEnemies(w, dt);
+    this.syncEnemies(w, dt, lights);
     this.syncRest(w, dt, lights);
 
     for (const f of this.flashes) { f.t += dt; lights.push({ x: f.x, z: f.z, c: f.c, power: f.power * (1 - f.t / f.max) * 6 }); }
@@ -405,8 +437,9 @@ export class View {
       const lantern = s.behaviour === 'lantern' && p.mood === 'asleep';
       let want = p.mood === 'awake' ? 1.6 : p.mood === 'stir' ? 0.4 + (p.t / TUNE.mood.stir) * (0.7 + 0.5 * Math.sin(t * 34)) : lantern ? 1.25 : 0.36 + 0.06 * Math.sin(t * 1.3 + p.wind);
       if (p.fuse > 0 && s.behaviour === 'burst') want = 1.2 + Math.sin(t * 40) * 1.2;
+      want += p.surge * 2.4;
       if (p.flash > 0) want = 3;
-      v.level += (want - v.level) * Math.min(1, dt * 10);
+      v.level += (want - v.level) * Math.min(1, dt * (p.surge > 0.5 ? 30 : 10));
       v.glow.color.copy(v.base).multiplyScalar(v.level);
       v.pool.color.copy(v.base).multiplyScalar(Math.min(1.1, v.level * 0.34));
       const awake = p.mood !== 'asleep';
@@ -420,7 +453,7 @@ export class View {
     }
   }
 
-  private syncEnemies(w: World, dt: number): void {
+  private syncEnemies(w: World, dt: number, lights: { x: number; z: number; c: THREE.Color; power: number }[]): void {
     const t = this.time;
     for (const e of w.enemies) {
       let v = this.enemies.get(e.id);
@@ -439,8 +472,8 @@ export class View {
       root.rotation.y = -e.face;
       body.scale.setScalar(1); body.position.set(0, 0, 0); body.rotation.set(0, 0, 0);
       if (e.dead) { const k = 1 - e.deadT / 0.4; body.scale.set(1 + (1 - k) * 0.5, k, 1 + (1 - k) * 0.5); continue; }
-      const base = e.type === 'tender' ? 0x8fa3ad : 0x000000;
-      skin.emissive.setHex(e.flash > 0 ? 0xffffff : e.state === 'windup' && e.type !== 'tender' ? 0x5a1810 : base);
+      const pale = e.type === 'tender' || e.type === 'warden';
+      skin.emissive.setHex(e.flash > 0 || (e.type === 'warden' && e.state === 'windup') ? 0xffffff : e.state === 'windup' && !pale ? 0x5a1810 : pale ? 0x8fa3ad : 0x000000);
       const moving = e.state === 'chase' || e.state === 'idle';
       if (e.type === 'mite') body.position.y = Math.abs(Math.sin(t * 16 + e.id)) * 0.18;
       if (e.type === 'skulker') {
@@ -457,10 +490,12 @@ export class View {
       }
       if (e.type === 'unlit' && !e.frozen && e.state !== 'recover') { body.rotation.z = -0.3; extra[0].rotation.z = extra[1].rotation.z = -1.1; body.position.x = Math.sin(t * 60) * 0.03; }
       else if (e.type === 'unlit') extra[0].rotation.z = extra[1].rotation.z = 0;
+      if (e.type === 'grazer') { body.position.y = 0.75 + Math.sin(t * 2.3 + e.id) * 0.25; extra[0].rotation.x = Math.PI / 2 + Math.sin(t * 50 + e.id) * 0.7; extra[1].rotation.x = Math.PI / 2 - Math.sin(t * 50 + e.id) * 0.7; lights.push({ x: e.x, z: e.z, c: GRAZER, power: 2.6 }); }
+      if (e.type === 'warden') { extra[1].rotation.y = t * (e.phase ? 5 : 0.8); extra[0].rotation.y = -t; body.position.y = Math.sin(t * 1.4 + e.id) * 0.2; lights.push({ x: e.x, z: e.z, c: WARDEN, power: e.phase ? 9 : 4 }); }
       if (e.type === 'tender') { extra[1].rotation.y = t * 1.5; extra[0].rotation.y = -t; body.position.y = Math.sin(t * 1.4) * 0.15; }
       if (e.state === 'stagger') body.rotation.z = 0.3;
 
-      const hurt = e.hp < e.maxHp && e.type !== 'unlit';
+      const hurt = e.hp < e.maxHp && e.type !== 'unlit' && e.type !== 'grazer';
       if (hurt && !v.bar) {
         v.bar = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.09).translate(0.5, 0, 0), new THREE.MeshBasicMaterial({ color: e.type === 'tender' ? 0xf3fbff : 0xd2523f, depthTest: false }));
         v.bar.renderOrder = 5; this.ents.add(v.bar);
@@ -496,6 +531,10 @@ export class View {
         if (q.kind === 'door') lights.push({ x: q.x - 1.5, z: q.z, c: white, power: w.boss?.dead ? 22 : 5 });
         if (q.kind === 'glyph' && !q.used) lights.push({ x: q.x, z: q.z + 1, c: white, power: 2.5 });
       }
+    }
+    for (const b of w.breaches) {
+      lights.push({ x: b.x, z: b.z, c: DAY, power: 11 });
+      if (Math.random() < dt * 14) this.particle(b.x + (Math.random() - 0.5) * 2.4, 5 + Math.random() * 3, b.z + (Math.random() - 0.5) * 2.4, 0, -0.5, 0, C.setRGB(0.2, 0.24, 0.27), 0.07, 5);
     }
     for (const l of w.loot) {
       let o = this.loot.get(l.id);

@@ -60,7 +60,7 @@ export const GLOW_HUES: readonly [number, number] = [168, 318];
 
 // ── creatures ───────────────────────────────────────────────────────────────
 
-export type EnemyId = 'mite' | 'skulker' | 'spitter' | 'husk' | 'unlit' | 'tender';
+export type EnemyId = 'mite' | 'skulker' | 'spitter' | 'husk' | 'unlit' | 'tender' | 'grazer' | 'warden';
 export interface EnemyData {
   name: string; hp: number; speed: number; r: number; dmg: number;
   sight: number; poise: number; range: number; windup: number; recover: number; loot: number;
@@ -71,6 +71,10 @@ export const ENEMIES: Record<EnemyId, EnemyData> = {
   spitter: { name: 'Spitter', hp: 28, speed: 3.1, r: 0.5, dmg: 13, sight: 11, poise: 6, range: 11, windup: 0.55, recover: 1.3, loot: 0.45 },
   husk: { name: 'Husk', hp: 150, speed: 2.6, r: 0.9, dmg: 28, sight: 8, poise: 45, range: 2.6, windup: 0.8, recover: 1.1, loot: 1 },
   unlit: { name: '', hp: 90, speed: 6.6, r: 0.45, dmg: 30, sight: 30, poise: 999, range: 1.3, windup: 0.1, recover: 1.6, loot: 1 },
+  // Harmless. It feeds at glowing plants, and the plants feed on it.
+  grazer: { name: 'Grazer', hp: 5, speed: 3.6, r: 0.22, dmg: 0, sight: 6, poise: 0, range: 0, windup: 0, recover: 0, loot: 0 },
+  // A Warden construct. It gardens. It minds if you cut what it tends.
+  warden: { name: 'Gardener', hp: 130, speed: 2.2, r: 0.6, dmg: 20, sight: 12, poise: 60, range: 9, windup: 0.7, recover: 1.1, loot: 1 },
   tender: { name: 'The Tender', hp: 820, speed: 2.4, r: 1.3, dmg: 24, sight: 40, poise: 999, range: 14, windup: 1.0, recover: 1.0, loot: 1 },
 };
 
@@ -166,6 +170,12 @@ export const THOUGHTS = {
   low: ['I can hear my own heart in the helmet.'],
   thicket: ['Growth across the whole passage. It will have to be cut.'],
   silence: ['Nothing sings in here. Nothing at all.'],
+  pulse: ['Every glowing thing flared at once, in a wave, from somewhere below. It came from over there.'],
+  garden: ['Rows. Sleeping plants in rows, and a thing of pale struts turning each one a little. It does not look up.'],
+  angry: ['It has stopped gardening. It is looking at me.'],
+  grazer: ['Small lights, drifting between the plants. Feeding. They scatter when I move.'],
+  eaten: ['It took one of the little lights out of the air. So that is what it does.'],
+  breach: ['Daylight, coming down through the roof. Things grow thicker under it.'],
 } as const;
 
 export const ENDINGS = {

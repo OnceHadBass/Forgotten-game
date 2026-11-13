@@ -99,6 +99,13 @@ export function generate(seed: number, depth: number): Level {
     if (a !== b) corridor(l, l.rooms[a], l.rooms[b], h);
   }
 
+  // Pillars in the larger rooms: cover, and something for the torch to throw shadows from.
+  l.rooms.forEach((r, i) => {
+    if (r.w < 6 || r.h < 6 || (depth === 4 && i === 0)) return;
+    const m = r.w >= 9 || r.h >= 9 ? 3 : 1;
+    for (const [px, py] of [[r.x + m, r.y + m], [r.x + r.w - 1 - m, r.y + m], [r.x + m, r.y + r.h - 1 - m], [r.x + r.w - 1 - m, r.y + r.h - 1 - m]]) if (chance(h, depth === 4 ? 1 : 0.75)) l.tiles[idx(l, px, py)] = WALL;
+  });
+
   l.start = depth === 4 ? 0 : int(h, l.rooms.length);
   const s = l.rooms[l.start];
   const d = distances(l, tx(s.cx), tx(s.cz));

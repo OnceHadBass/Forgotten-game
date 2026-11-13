@@ -27,7 +27,7 @@ export interface Campaign {
 }
 
 export type Mood = 'asleep' | 'stir' | 'awake';
-export interface Plant { id: number; sp: number; x: number; z: number; r: number; scale: number; rot: number; hp: number; mood: Mood; t: number; lit: number; calm: number; cd: number; fuse: number; pool: number; spawned: number; dead: boolean; flash: number; wind: number }
+export interface Plant { id: number; sp: number; x: number; z: number; r: number; scale: number; rot: number; hp: number; mood: Mood; t: number; lit: number; calm: number; cd: number; fuse: number; pool: number; spawned: number; dead: boolean; flash: number; wind: number; surge: number }
 
 export type EState = 'idle' | 'chase' | 'windup' | 'strike' | 'recover' | 'stagger';
 export interface Enemy { id: number; type: EnemyId; x: number; z: number; r: number; hp: number; maxHp: number; state: EState; t: number; face: number; vx: number; vz: number; alert: number; homeX: number; homeZ: number; cd: number; flash: number; frozen: boolean; slow: number; dead: boolean; deadT: number; tx: number; tz: number; phase: number; wander: number; elite: boolean }
@@ -74,7 +74,9 @@ export interface World {
   player: Player; enemies: Enemy[]; plants: Plant[]; props: Prop[]; loot: Loot[]; projs: Proj[]; zones: Zone[];
   fx: Fx[]; flow: Int16Array; flowT: number; explored: Uint8Array; revealed: boolean;
   hitstop: number; still: number; prompt: string | null; near: Loot | Prop | null; hover: Plant | null;
-  outcome: null | 'extracted' | 'dead' | 'descend' | 'won'; liftT: number; said: Record<string, boolean>; boss: Enemy | null; cause: string;
+  outcome: null | 'extracted' | 'dead' | 'descend' | 'won'; liftT: number;
+  /** The Pulse passing: a ring of light spreading from the way down. */
+  wave: number; waveT: number; waveX: number; waveZ: number; breaches: { x: number; z: number }[]; said: Record<string, boolean>; boss: Enemy | null; cause: string;
 }
 
 // ── items ───────────────────────────────────────────────────────────────────

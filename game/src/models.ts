@@ -110,6 +110,21 @@ export function plantGeometry(s: Species, seed: number, variant: number): PlantG
   return { body: bodyG, glow: mergeGeometries(G)!, height: top };
 }
 
+/** A tuft of undergrowth. Decor: it never trembles, never glows, carries no marks. */
+export function tuftGeometry(): THREE.BufferGeometry {
+  const h: RngHost = { rng: 31 };
+  const parts: THREE.BufferGeometry[] = [];
+  const tmp = new THREE.Color();
+  for (let i = 0; i < 7; i++) {
+    const a = range(h, 0, 6.28), d = range(h, 0, 0.22), len = range(h, 0.3, 0.75);
+    const c = srgb(range(h, 100, 150), 0.42, range(h, 0.13, 0.22)), dk = srgb(125, 0.4, 0.05);
+    parts.push(part(CONE, [Math.cos(a) * d, 0, Math.sin(a) * d], [0, range(h, 0, 6.28), range(h, -0.6, 0.6)], [range(h, 0.035, 0.07), len, 0.02], (y) => tmp.copy(dk).lerp(c, Math.min(1, y / 0.6))));
+  }
+  const g = mergeGeometries(parts)!;
+  g.computeVertexNormals();
+  return g;
+}
+
 export function thicketGeometry(): THREE.BufferGeometry {
   const h: RngHost = { rng: 77 };
   const parts: THREE.BufferGeometry[] = [];
@@ -189,6 +204,13 @@ export function creature(type: EnemyId): Creature {
     const armL = mesh(new THREE.CapsuleGeometry(0.05, 1.5, 2, 4), skin, 0.1, 1.2, 0.26), armR = mesh(new THREE.CapsuleGeometry(0.05, 1.5, 2, 4), skin, 0.1, 1.2, -0.26);
     body.add(armL, armR);
     extra.push(armL, armR);
+  } else if (type === 'grazer') {
+    // A small light that drifts between the plants. Teal, like everything alive.
+    skin = mat(0x2a3a3c, { roughness: 0.5 });
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.11, 6, 5), new THREE.MeshBasicMaterial({ color: 0x7ff0e0 }));
+    lamp.position.set(-0.12, 0, 0);
+    body.add(mesh(new THREE.OctahedronGeometry(0.13), skin, 0.05, 0, 0), lamp);
+    for (const z of [0.16, -0.16]) { const wing = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.12), new THREE.MeshBasicMaterial({ color: 0x9fb9b6, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false })); wing.position.set(0, 0.05, z); wing.rotation.x = Math.PI / 2; body.add(wing); extra.push(wing); }
   } else {
     skin = mat(0xdfe8ec, { emissive: 0x8fa3ad, emissiveIntensity: 0.6, roughness: 0.3 });
     const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.6, 0), new THREE.MeshBasicMaterial({ color: 0xf3fbff }));
@@ -197,6 +219,7 @@ export function creature(type: EnemyId): Creature {
     body.add(core, ring);
     for (let i = 0; i < 6; i++) { const a = (i / 6) * 6.28; const l = mesh(new THREE.CylinderGeometry(0.05, 0.03, 2.6, 4), skin, Math.cos(a) * 0.9, 1.15, Math.sin(a) * 0.9); l.rotation.set(Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5); body.add(l); }
     extra.push(core, ring);
+    if (type === 'warden') root.scale.setScalar(0.48);
   }
   return { root, body, skin, extra };
 }
