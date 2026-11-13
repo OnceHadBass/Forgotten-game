@@ -21,6 +21,23 @@ let camp: Campaign | null = null;
 let world: World | null = null;
 let mode: 'title' | 'base' | 'play' | 'pause' | 'over' = 'title';
 let ending = 0;
+let demo = false;
+const fade = document.createElement('div');
+fade.className = 'fade';
+app.append(fade);
+
+/** Behind the title: a tended garden somewhere in the Threshold, and a torch turning slowly. */
+function backdrop(): void {
+  const c = newCampaign(20261113);
+  const w = createWorld(c, 1);
+  const g = w.enemies.find((e) => e.type === 'warden');
+  if (g) { w.player.x = g.homeX + 2.5; w.player.z = g.homeZ + 3; }
+  for (const e of w.enemies) if (e.type !== 'warden' && e.type !== 'grazer') e.dead = true;
+  w.enemies = w.enemies.filter((e) => !e.dead);
+  w.waveT = 6;
+  world = w; demo = true;
+  view.build(w);
+}
 
 const keys = new Set<string>();
 const once = new Set<string>();
@@ -29,15 +46,18 @@ let wheel = 0;
 
 function startRun(depth: number, carry?: World): void {
   if (!camp) return;
+  demo = false;
   world = createWorld(camp, depth, carry?.player);
   view.build(world);
   mode = 'play'; ending = 0;
+  setTimeout(() => fade.classList.remove('on'), 80);
   hud.show(true);
   saveCampaign(camp);
 }
 
 function toBase(): void {
   if (!camp) return;
+  fade.classList.remove('on');
   saveCampaign(camp.over ? null : camp);
   if (camp.over) { mode = 'over'; hud.ending(camp); } else { mode = 'base'; hud.base(camp); }
 }
@@ -56,9 +76,10 @@ const hud = new Hud(app, {
   who: (i) => { if (camp?.roster[i].alive) { camp.current = i; toBase(); } },
   ending: (k: EndKind) => { if (camp) { camp.over = k; toBase(); } },
   unpause: () => { mode = 'play'; hud.show(true); },
-  restart: () => { saveCampaign(null); camp = null; world = null; mode = 'title'; hud.title(null); },
+  restart: () => { saveCampaign(null); camp = null; mode = 'title'; backdrop(); hud.title(null); },
   mute: () => { audio.muted = !audio.muted; },
 });
+backdrop();
 hud.title(loadCampaign());
 
 addEventListener('keydown', (e) => {
@@ -108,6 +129,15 @@ function frame(now: number): void {
   last = now;
   const w = world;
   if (!w) { view.renderer.clear(); return; }
+  if (demo) {
+    // the title scene plays itself: nobody is hurt, nothing is said
+    const a = now / 4200, p = w.player;
+    p.invuln = 9; p.cell = p.maxCell; p.hp = p.maxHp;
+    step(w, { mx: 0, mz: 0, aimX: p.x + Math.cos(a) * 6, aimZ: p.z + Math.sin(a) * 6, attack: false, fire: false, dodge: false, interact: false, graft: false, relic: false, torch: false, medkit: false, cycle: 0 }, Math.min(dt, 1 / 30));
+    view.consume(w.fx.filter((f) => f.k !== 'shake'), w); w.fx.length = 0;
+    view.update(w, dt);
+    return;
+  }
   if (mode === 'play') {
     acc += dt;
     let input: Input | null = null;
@@ -124,7 +154,7 @@ function frame(now: number): void {
     }
     audio.update(w, dt);
     hud.update(w, view);
-    if (w.outcome) { ending += dt; if (ending > (w.outcome === 'dead' ? 2.4 : w.outcome === 'descend' ? 0.5 : 1)) { finish(w); return; } }
+    if (w.outcome) { fade.classList.toggle('on', ending > (w.outcome === 'dead' ? 1.6 : 0.05)); ending += dt; if (ending > (w.outcome === 'dead' ? 2.4 : w.outcome === 'descend' ? 0.5 : 1)) { finish(w); return; } }
   }
   view.update(w, mode === 'play' ? dt : 0);
 }

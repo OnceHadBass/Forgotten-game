@@ -55,12 +55,13 @@ export class Hud {
     });
   }
 
-  show(play: boolean): void { this.root.style.display = play ? '' : 'none'; if (play) this.overlay.innerHTML = ''; this.overlay.classList.toggle('on', !play); }
+  show(play: boolean): void { this.root.style.display = play ? '' : 'none'; if (play) { this.overlay.innerHTML = ''; this.overlay.classList.remove('clear'); } this.overlay.classList.toggle('on', !play); }
 
   // ── screens ───────────────────────────────────────────────────────────────
 
   title(saved: Campaign | null): void {
     this.show(false);
+    this.overlay.classList.add('clear');
     this.overlay.innerHTML = `<div class="sheet title">
       <p class="eyebrow">An isometric descent</p><h1>FORGOTTEN</h1>
       <p class="lede">An expedition followed a signal to a world that is slowly digesting it. Below the base is a ruin that goes down a long way. Take a blade and a torch. Bring back what you can carry.</p>
@@ -76,6 +77,7 @@ export class Hud {
 
   base(c: Campaign): void {
     this.show(false);
+    this.overlay.classList.remove('clear');
     const who = c.roster[c.current];
     const dead = c.roster.filter((p) => !p.alive);
     const pulse = c.pulse < 0.5 ? 'Stable' : c.pulse < 1.5 ? 'Strain' : 'Surge';

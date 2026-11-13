@@ -449,6 +449,7 @@ export class View {
       v.root.rotation.x = Math.cos(t * 0.7 + p.wind) * 0.03 + (awake ? Math.cos(t * 53) * 0.03 : 0);
       const swell = p.fuse > 0 && s.behaviour === 'burst' ? 1 + (1.15 - p.fuse) * 0.4 : 1;
       v.root.scale.set(p.scale * swell, p.scale * (awake ? 1.14 : 1) * swell, p.scale * swell);
+      v.root.visible = this.inView(p.x, p.z);
       if (v.level > 0.9) lights.push({ x: p.x, z: p.z, c: v.base, power: v.level * 9 });
     }
   }
@@ -469,6 +470,7 @@ export class View {
       }
       const { root, body, skin, extra, legs } = v.c;
       root.position.set(e.x, 0, e.z);
+      root.visible = this.inView(e.x, e.z);
       // Nothing alive turns on the spot: the body follows the heading a beat behind.
       const turn = e.type === 'unlit' ? 60 : e.state === 'windup' ? 18 : 9;
       v.yaw += Math.atan2(Math.sin(e.face - v.yaw), Math.cos(e.face - v.yaw)) * Math.min(1, dt * turn);
@@ -586,6 +588,7 @@ export class View {
         core.name = 'core'; g.add(core); this.ents.add(g); o = g; this.loot.set(l.id, o);
       }
       o.position.set(l.x, 0, l.z);
+      o.visible = this.inView(l.x, l.z);
       const core = o.getObjectByName('core')!;
       core.position.y = 0.45 + Math.sin(t * 3 + l.id) * 0.1 + Math.max(0, 0.35 - l.t) * 3;
       core.rotation.y = t * 2 + l.id;
@@ -617,6 +620,9 @@ export class View {
       lights.push({ x: pr.x, z: pr.z, c: C.clone().setHex(0xe06ae0), power: 6 });
     }
   }
+
+  /** Off-screen things are not drawn and cast no shadows. The screen is about 30 m across. */
+  private inView(x: number, z: number): boolean { return Math.abs(x - this.target.x) < 30 && Math.abs(z - this.target.z) < 30 && Math.abs(x - this.target.x - (z - this.target.z)) < 36; }
 
   // ── screen and ground ─────────────────────────────────────────────────────
 

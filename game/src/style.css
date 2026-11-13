@@ -67,7 +67,7 @@ h4 { font: 500 11px var(--mono); letter-spacing: 0.16em; text-transform: upperca
 .boss b { font: 700 18px var(--display); letter-spacing: 0.2em; color: var(--warden); } .boss .bar { height: 8px; } .boss .bar i { background: var(--warden); }
 
 /* screens */
-.overlay { position: fixed; inset: 0; display: none; overflow-y: auto; background: radial-gradient(120% 90% at 50% 0%, rgba(23, 36, 42, 0.86), rgba(7, 9, 11, 0.95) 65%); padding: 24px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px)); }
+.overlay { position: fixed; inset: 0; z-index: 5; display: none; overflow-y: auto; background: radial-gradient(120% 90% at 50% 0%, rgba(23, 36, 42, 0.86), rgba(7, 9, 11, 0.95) 65%); padding: 24px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px)); }
 .overlay.on { display: block; }
 .sheet { max-width: 1040px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
 .sheet.title { max-width: 700px; margin-top: 7vh; gap: 18px; }
@@ -89,3 +89,7 @@ kbd { font: 500 11px var(--mono); color: var(--bone); border: 1px solid var(--st
 .base footer { border-top: 1px solid var(--stone-3); padding-top: 12px; margin-top: 8px; }
 @media (max-width: 760px) { .cols { grid-template-columns: minmax(0, 1fr); } .kit { max-width: 52vw; } .map { width: 110px; height: 110px; } }
 @media (prefers-reduced-motion: reduce) { .toasts p, .num { animation-duration: 0.01s; } }
+
+.fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.45s; z-index: 4; }
+.fade.on { opacity: 1; }
+.overlay.clear { background: radial-gradient(90% 80% at 30% 40%, rgba(7, 9, 11, 0.55), rgba(7, 9, 11, 0.9) 75%); }
