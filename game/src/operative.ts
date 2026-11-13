@@ -9,7 +9,7 @@ import type { World } from './state';
 type M = THREE.MeshStandardMaterial;
 const mat = (color: number, extra: THREE.MeshStandardMaterialParameters = {}): M => new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.1, ...extra });
 const mesh = (g: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z = 0): THREE.Mesh => { const o = new THREE.Mesh(g, m); o.position.set(x, y, z); o.castShadow = true; return o; };
-const group = (x: number, y: number, z: number, ...kids: THREE.Object3D[]): THREE.Group => { const g = new THREE.Group(); g.position.set(x, y, z); g.add(...kids); return g; };
+const group = (x: number, y: number, z: number, ...kids: THREE.Object3D[]): THREE.Group => { const g = new THREE.Group(); g.position.set(x, y, z); if (kids.length) g.add(...kids); return g; };
 const box = (w: number, h: number, d: number): THREE.BoxGeometry => new THREE.BoxGeometry(w, h, d);
 const cap = (r: number, len: number): THREE.CapsuleGeometry => new THREE.CapsuleGeometry(r, len, 4, 10);
 

@@ -9,6 +9,17 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
+
+/**
+ * One bad pixel (not-a-number, or absurdly bright) would be smeared over the whole
+ * picture by the bloom and black it out. Nothing gets past this without being a sane colour.
+ */
+const Sane = {
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: 'uniform sampler2D tDiffuse; varying vec2 vUv; void main(){ vec3 c = texture2D(tDiffuse, vUv).rgb; if (!(c.r >= 0.0 && c.r < 1e4)) c.r = 0.0; if (!(c.g >= 0.0 && c.g < 1e4)) c.g = 0.0; if (!(c.b >= 0.0 && c.b < 1e4)) c.b = 0.0; gl_FragColor = vec4(min(c, vec3(24.0)), 1.0); }',
+};
 
 const Grade = {
   uniforms: { tDiffuse: { value: null }, time: { value: 0 }, hurt: { value: 0 }, dark: { value: 0 }, still: { value: 0 }, low: { value: 0 }, aspect: { value: 1 } },
@@ -33,7 +44,7 @@ const Grade = {
       col += vec3(0.75, 0.1, 0.05) * smoothstep(0.35, 0.95, r) * max(hurt, low * (0.45 + 0.2 * sin(time * 6.5)));
       col += vec3(0.5, 0.56, 0.6) * still * smoothstep(0.5, 1.0, r) * 0.25;
       col += (hash(vUv * vec2(1280.0, 720.0) + fract(time) * 91.7) - 0.5) * 0.035;
-      gl_FragColor = vec4(col, 1.0);
+      gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
     }`,
 };
 
@@ -41,24 +52,30 @@ export class Post {
   private composer: EffectComposer;
   private bloom: UnrealBloomPass;
   private grade: ShaderPass;
+  private fxaa: ShaderPass | null = null;
 
   /** `low` drops the bloom and the multisampling: the grade stays. */
   constructor(private renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera, low = false) {
     const target = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: low ? 0 : 4 });
     this.composer = new EffectComposer(renderer, target);
     this.composer.addPass(new RenderPass(scene, camera));
+    this.composer.addPass(new ShaderPass(Sane));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(4, 4), 0.5, 0.7, 1.0);
     this.bloom.enabled = !low;
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
     this.grade = new ShaderPass(Grade);
     this.composer.addPass(this.grade);
+    // without multisampling, edges need smoothing some other way or everything looks stepped
+    if (low) { this.fxaa = new ShaderPass(FXAAShader); this.composer.addPass(this.fxaa); }
   }
 
   resize(w: number, h: number): void {
     this.composer.setPixelRatio(this.renderer.getPixelRatio());
     this.composer.setSize(w, h);
     this.grade.uniforms.aspect.value = w / h;
+    const pr = this.renderer.getPixelRatio();
+    if (this.fxaa) (this.fxaa.uniforms.resolution.value as THREE.Vector2).set(1 / (w * pr), 1 / (h * pr));
   }
 
   render(time: number, hurt: number, dark: number, still: number, low: number): void {

@@ -80,6 +80,18 @@ export function generate(seed: number, depth: number): Level {
     for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) { carve(l, x, y); l.roomAt[idx(l, x, y)] = i; }
   });
 
+  // Nothing here was left square. Corners have come down, and passages have given way at the sides.
+  if (depth < 4) {
+    l.rooms.forEach((r) => {
+      if (r.w < 5 || r.h < 5) return;
+      for (const [cx, cy, sx, sy] of [[r.x, r.y, 1, 1], [r.x + r.w - 1, r.y, -1, 1], [r.x, r.y + r.h - 1, 1, -1], [r.x + r.w - 1, r.y + r.h - 1, -1, -1]]) {
+        if (!chance(h, 0.8)) continue;
+        l.tiles[idx(l, cx, cy)] = WALL;
+        if (r.w >= 7 && r.h >= 7 && chance(h, 0.6)) { l.tiles[idx(l, cx + sx, cy)] = WALL; l.tiles[idx(l, cx, cy + sy)] = WALL; }
+      }
+    });
+  }
+
   // Join every room to its nearest joined neighbour, then add a couple of loops.
   const joined = [0];
   const degree = l.rooms.map(() => 0);
@@ -97,6 +109,13 @@ export function generate(seed: number, depth: number): Level {
   for (let i = 0; i < 2 && l.rooms.length > 4; i++) {
     const a = int(h, l.rooms.length), b = int(h, l.rooms.length);
     if (a !== b) corridor(l, l.rooms[a], l.rooms[b], h);
+  }
+
+  // passages have given way at the sides here and there
+  if (depth < 4) for (let i = 0; i < l.tiles.length; i++) {
+    if (l.tiles[i] !== FLOOR || l.roomAt[i] >= 0 || !chance(h, 0.13)) continue;
+    const [dx, dy] = [[1, 0], [-1, 0], [0, 1], [0, -1]][int(h, 4)];
+    carve(l, (i % l.w) + dx, ((i / l.w) | 0) + dy);
   }
 
   // Pillars in the larger rooms: cover, and something for the torch to throw shadows from.

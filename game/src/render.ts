@@ -35,20 +35,21 @@ const rnd = (): number => { seedN = (seedN * 16807) % 2147483647; return seedN /
 
 const stoneTex = (): THREE.CanvasTexture => canvasTexture(512, (g) => {
   seedN = 11;
-  g.fillStyle = '#8f8f8f'; g.fillRect(0, 0, 512, 512);
-  // flagstones of uneven size, each its own grey
-  for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
-    const v = 120 + rnd() * 60;
-    g.fillStyle = `rgb(${v},${v},${v + 3})`;
-    const off = y % 2 ? 64 : 0;
-    g.fillRect(x * 128 + off + 2, y * 128 + 2, 124, 124);
-    g.fillRect(x * 128 + off - 512 + 2, y * 128 + 2, 124, 124);
+  g.fillStyle = '#8c8c8c'; g.fillRect(0, 0, 512, 512);
+  const wrap = (draw: (ox: number, oy: number) => void): void => { for (const ox of [0, 512, -512]) for (const oy of [0, 512, -512]) draw(ox, oy); };
+  // worn paving: big uneven slabs, each its own grey, edges anything but square
+  g.filter = 'blur(10px)';
+  for (let i = 0; i < 26; i++) { const v = 105 + rnd() * 70, x = rnd() * 512, y = rnd() * 512, rx = 50 + rnd() * 80, ry = 40 + rnd() * 70, a = rnd() * 3; g.fillStyle = `rgb(${v},${v},${v + 3})`; wrap((ox, oy) => { g.beginPath(); g.ellipse(x + ox, y + oy, rx, ry, a, 0, 7); g.fill(); }); }
+  g.filter = 'none';
+  for (let i = 0; i < 6000; i++) { const v = rnd() * 255; g.fillStyle = `rgba(${v},${v},${v},0.05)`; g.fillRect(rnd() * 512, rnd() * 512, 1 + rnd() * 4, 1 + rnd() * 4); }
+  // joints and cracks wander; none of them runs true
+  for (let i = 0; i < 13; i++) {
+    const pts: [number, number][] = []; let x = rnd() * 512, y = rnd() * 512, a = rnd() * 6.28;
+    for (let k = 0; k < 14; k++) { pts.push([x, y]); a += rnd() * 1.0 - 0.5; x += Math.cos(a) * 34; y += Math.sin(a) * 34; }
+    g.strokeStyle = `rgba(16,20,22,${0.4 + rnd() * 0.3})`; g.lineWidth = 1.4 + rnd() * 1.8; g.lineJoin = 'round';
+    wrap((ox, oy) => { g.beginPath(); pts.forEach(([px, py], k) => (k ? g.lineTo(px + ox, py + oy) : g.moveTo(px + ox, py + oy))); g.stroke(); });
   }
-  for (let i = 0; i < 5000; i++) { const v = rnd() * 255; g.fillStyle = `rgba(${v},${v},${v},0.06)`; g.fillRect(rnd() * 512, rnd() * 512, 2 + rnd() * 3, 2 + rnd() * 3); }
-  g.strokeStyle = 'rgba(20,24,26,0.5)'; g.lineWidth = 1.2;
-  for (let i = 0; i < 16; i++) { g.beginPath(); let x = rnd() * 512, y = rnd() * 512; g.moveTo(x, y); for (let k = 0; k < 5; k++) { x += rnd() * 50 - 25; y += rnd() * 50 - 25; g.lineTo(x, y); } g.stroke(); }
-  // moss in the joins
-  for (let i = 0; i < 260; i++) { g.fillStyle = `rgba(40,${70 + rnd() * 40},50,0.16)`; const y = Math.floor(rnd() * 4) * 128, x = rnd() * 512; g.beginPath(); g.arc(x, y + rnd() * 6, 3 + rnd() * 7, 0, 7); g.fill(); }
+  for (let i = 0; i < 300; i++) { g.fillStyle = `rgba(36,${66 + rnd() * 40},46,0.13)`; g.beginPath(); g.arc(rnd() * 512, rnd() * 512, 2 + rnd() * 9, 0, 7); g.fill(); }
 });
 
 /** Relief from brightness: joints and cracks become grooves the torch can rake across. */
@@ -67,18 +68,18 @@ function normalFrom(src: THREE.CanvasTexture, strength: number): THREE.CanvasTex
   return out;
 }
 
-/** Fitted blocks in courses, for the walls. */
+/** Warden masonry: great weathered monoliths, strata and stains, hardly a joint in them. */
 const blockTex = (): THREE.CanvasTexture => canvasTexture(512, (g) => {
   seedN = 23;
-  g.fillStyle = '#3c3c3c'; g.fillRect(0, 0, 512, 512);
-  for (let row = 0; row < 6; row++) {
-    const y = row * 85.4, off = row % 2 ? 128 : 0;
-    for (let x = -1; x < 3; x++) { const v = 118 + rnd() * 62; g.fillStyle = `rgb(${v},${v},${v + 4})`; g.fillRect(x * 256 + off + 3, y + 3, 250, 79); }
-  }
-  for (let i = 0; i < 5000; i++) { const v = rnd() * 255; g.fillStyle = `rgba(${v},${v},${v},0.055)`; g.fillRect(rnd() * 512, rnd() * 512, 2 + rnd() * 4, 2 + rnd() * 4); }
-  for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(30,${60 + rnd() * 40},45,0.12)`; g.fillRect(rnd() * 512, rnd() * 512, 3 + rnd() * 5, 30 + rnd() * 90); } // runnels of damp
-  g.strokeStyle = 'rgba(18,22,24,0.55)'; g.lineWidth = 1.3;
-  for (let i = 0; i < 12; i++) { g.beginPath(); let x = rnd() * 512, y = rnd() * 512; g.moveTo(x, y); for (let k = 0; k < 6; k++) { x += rnd() * 36 - 18; y += rnd() * 60; g.lineTo(x, y); } g.stroke(); }
+  g.fillStyle = '#909090'; g.fillRect(0, 0, 512, 512);
+  g.filter = 'blur(18px)';
+  for (let i = 0; i < 40; i++) { const v = 90 + rnd() * 90; g.fillStyle = `rgba(${v},${v},${v + 4},0.5)`; const x = rnd() * 512, y = rnd() * 512, r = 40 + rnd() * 90; for (const [ox, oy] of [[0, 0], [512, 0], [-512, 0], [0, 512], [0, -512]]) { g.beginPath(); g.ellipse(x + ox, y + oy, r * 1.6, r * 0.6, 0, 0, 7); g.fill(); } }
+  g.filter = 'none';
+  for (let i = 0; i < 7000; i++) { const v = rnd() * 255; g.fillStyle = `rgba(${v},${v},${v},0.045)`; g.fillRect(rnd() * 512, rnd() * 512, 1 + rnd() * 4, 1 + rnd() * 3); }
+  // strata: long faint beds, never straight, never evenly spaced
+  for (let i = 0; i < 9; i++) { g.strokeStyle = `rgba(25,28,30,${0.12 + rnd() * 0.2})`; g.lineWidth = 0.8 + rnd() * 1.6; let y = rnd() * 512; for (const oy of [0, 512, -512]) { g.beginPath(); let yy = y + oy; g.moveTo(-10, yy); for (let x = 0; x <= 520; x += 26) { yy += rnd() * 7 - 3.5; g.lineTo(x, yy); } g.stroke(); } }
+  for (let i = 0; i < 30; i++) { g.fillStyle = `rgba(20,${40 + rnd() * 30},32,${0.05 + rnd() * 0.08})`; g.fillRect(rnd() * 512, rnd() * 512, 4 + rnd() * 12, 60 + rnd() * 200); } // where water has run
+  for (let i = 0; i < 120; i++) { g.fillStyle = `rgba(15,15,15,${0.2 + rnd() * 0.3})`; g.beginPath(); g.arc(rnd() * 512, rnd() * 512, 0.8 + rnd() * 2.2, 0, 7); g.fill(); } // pits
 });
 
 /** Where water stands: low roughness, so the torch glints off it. */
@@ -214,7 +215,7 @@ export class View {
     this.points = new THREE.Points(pg, new THREE.ShaderMaterial({
       uniforms: { scale: { value: 1 } }, transparent: true, blending: add, depthWrite: false, fog: false, vertexColors: true,
       vertexShader: 'attribute float size; uniform float scale; varying vec3 vC; void main(){ vC = color; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_PointSize = size * scale; }',
-      fragmentShader: 'varying vec3 vC; void main(){ float d = length(gl_PointCoord - 0.5); if (d > 0.5) discard; gl_FragColor = vec4(vC * smoothstep(0.5, 0.1, d), 1.0); }',
+      fragmentShader: 'varying vec3 vC; void main(){ float d = length(gl_PointCoord - 0.5); if (d > 0.5) discard; gl_FragColor = vec4(max(vC, 0.0) * smoothstep(0.5, 0.1, d), 1.0); }',
     }));
     this.points.frustumCulled = false;
     this.scene.add(this.points);
@@ -225,7 +226,7 @@ export class View {
     this.cone = new THREE.Mesh(new THREE.RingGeometry(0.5, 1, 24, 6, -0.5, 1.0).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({
       uniforms: { power: { value: 0 } }, transparent: true, blending: add, depthWrite: false, side: THREE.DoubleSide,
       vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-      fragmentShader: 'uniform float power; varying vec3 vP; void main(){ float r = length(vP.xz); float a = abs(atan(-vP.z, vP.x)); float f = pow(1.0 - r, 1.6) * smoothstep(0.5, 0.12, a) * smoothstep(0.03, 0.12, r); gl_FragColor = vec4(vec3(1.0, 0.94, 0.82) * f * power, 1.0); }',
+      fragmentShader: 'uniform float power; varying vec3 vP; void main(){ float r = length(vP.xz); float a = abs(atan(-vP.z, vP.x)); float f = pow(clamp(1.0 - r, 0.0, 1.0), 1.6) * smoothstep(0.5, 0.12, a) * smoothstep(0.03, 0.12, r); gl_FragColor = vec4(vec3(1.0, 0.94, 0.82) * f * power, 1.0); }',
     }));
     this.cone.renderOrder = 3;
     this.decals = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: this.splat, transparent: true, opacity: 0.85, depthWrite: false, fog: false }), 72);
@@ -292,14 +293,70 @@ export class View {
 
     // Walls: every wall tile is a block, so the mass reads as solid. Blocks beside
     // open floor can sink (the cutaway); light is stopped by full-height copies that never sink.
-    const box = new THREE.BoxGeometry(T, WALL_H, T).translate(0, WALL_H / 2, 0);
-    const col = new Float32Array(box.getAttribute('position').count * 3);
-    for (let i = 0; i < col.length / 3; i++) { const top = box.getAttribute('normal').getY(i) > 0.5; col.fill(top ? 0.34 : 1, i * 3, i * 3 + 3); }
-    box.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    const cells: number[] = [];
-    for (let i = 0; i < l.tiles.length; i++) if (l.tiles[i] === WALL) cells.push(i);
-    const wallMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(look.wall).multiplyScalar(1.3), map: this.block, normalMap: this.blockN, normalScale: new THREE.Vector2(1.3, 1.3), roughness: 0.88, vertexColors: true });
-    const walls = new THREE.InstancedMesh(box, wallMat, cells.length);
+    const tint = (geo: THREE.BufferGeometry): THREE.BufferGeometry => {
+      const col = new Float32Array(geo.getAttribute('position').count * 3);
+      for (let i = 0; i < col.length / 3; i++) col.fill(geo.getAttribute('normal').getY(i) > 0.5 ? 0.36 : 1, i * 3, i * 3 + 3);
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      return geo;
+    };
+    const box = tint(new THREE.BoxGeometry(T, WALL_H, T).translate(0, WALL_H / 2, 0));
+    const hewn = tint(new THREE.BoxGeometry(T, WALL_H, T, 5, 6, 5).translate(0, WALL_H / 2, 0));
+    const wallMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(look.wall).multiplyScalar(1.35), map: this.block, normalMap: this.blockN, normalScale: new THREE.Vector2(1.2, 1.2), roughness: 0.9, vertexColors: true, flatShading: true });
+    // Hewn, weathered stone: every block is pushed about by one field of noise in world
+    // space, so neighbours agree where they meet and no wall is a row of cubes.
+    wallMat.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>
+        attribute vec4 aOpen;
+        float vh(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+        float vn(vec3 p){ vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(mix(vh(i), vh(i + vec3(1,0,0)), f.x), mix(vh(i + vec3(0,1,0)), vh(i + vec3(1,1,0)), f.x), f.y),
+                     mix(mix(vh(i + vec3(0,0,1)), vh(i + vec3(1,0,1)), f.x), mix(vh(i + vec3(0,1,1)), vh(i + vec3(1,1,1)), f.x), f.y), f.z); }`)
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+        #ifdef USE_INSTANCING
+          vec3 wp = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+        #else
+          vec3 wp = (modelMatrix * vec4(transformed, 1.0)).xyz;
+        #endif
+        float planted = smoothstep(0.0, 0.7, wp.y);
+        // Only faces that look onto open floor move, and only outwards, so the stone always
+        // stands in front of the full block that stops the light. Edges shared with a
+        // neighbouring block stay shared; exposed corners are worn round.
+        vec2 dir = vec2(0.0);
+        float hx = position.x / ${(T / 2).toFixed(1)}, hz = position.z / ${(T / 2).toFixed(1)};
+        if (hx > 0.98) dir.x += aOpen.x; if (hx < -0.98) dir.x -= aOpen.y;
+        if (hz > 0.98) dir.y += aOpen.z; if (hz < -0.98) dir.y -= aOpen.w;
+        float dl = length(dir);
+        if (dl > 0.0) transformed.xz += dir / dl * (vn(wp * 0.55) * 0.5 + vn(wp * 1.9 + 7.0) * 0.2 + 0.02) * planted;
+        // the tops are broken, not levelled: some stretches stand, some have come down
+        float crown = smoothstep(0.55, 1.0, position.y / ${WALL_H.toFixed(1)});
+        transformed.y += (vn(vec3(wp.x * 0.33, 0.0, wp.z * 0.33)) - 0.6) * 1.5 * crown;
+        vec2 wuv = abs(normal.y) > 0.5 ? wp.xz : (abs(normal.x) > 0.5 ? wp.zy : wp.xy);
+        #ifdef USE_MAP
+          vMapUv = wuv * 0.21;
+        #endif
+        #ifdef USE_NORMALMAP
+          vNormalMapUv = wuv * 0.21;
+        #endif`);
+    };
+    const cells: number[] = [], inner: number[] = [];
+    for (let i = 0; i < l.tiles.length; i++) {
+      if (l.tiles[i] !== WALL) continue;
+      const x = i % l.w, y = (i / l.w) | 0;
+      let open = false;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const a2 = x + dx, b2 = y + dy; if (a2 >= 0 && b2 >= 0 && a2 < l.w && b2 < l.h && l.tiles[idx(l, a2, b2)] !== WALL) open = true; }
+      (open ? cells : inner).push(i);
+    }
+    const openTo = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < l.w && y < l.h && l.tiles[idx(l, x, y)] !== WALL;
+    const openAttr = new Float32Array(Math.max(1, cells.length) * 4);
+    cells.forEach((cell, n) => { const x = cell % l.w, y = (cell / l.w) | 0; openAttr.set([openTo(x + 1, y) ? 1 : 0, openTo(x - 1, y) ? 1 : 0, openTo(x, y + 1) ? 1 : 0, openTo(x, y - 1) ? 1 : 0], n * 4); });
+    hewn.setAttribute('aOpen', new THREE.InstancedBufferAttribute(openAttr, 4));
+    box.setAttribute('aOpen', new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, inner.length) * 4), 4));
+    const walls = new THREE.InstancedMesh(hewn, wallMat, Math.max(1, cells.length));
+    walls.count = cells.length;
+    const mass = new THREE.InstancedMesh(box, wallMat, Math.max(1, inner.length));
+    mass.count = inner.length;
+    inner.forEach((cell, n) => mass.setMatrixAt(n, M.makeTranslation(centre(cell % l.w), 0, centre((cell / l.w) | 0))));
+    mass.frustumCulled = false;
     const border: number[] = [];
     this.wallAt = new Int32Array(l.w * l.h).fill(-1);
     this.wallScale = new Float32Array(cells.length).fill(1);
@@ -307,17 +364,17 @@ export class View {
     cells.forEach((cell, n) => {
       const x = cell % l.w, y = (cell / l.w) | 0;
       let open = false;
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const a = x + dx, b = y + dy; if (a >= 0 && b >= 0 && a < l.w && b < l.h && l.tiles[idx(l, a, b)] !== WALL) open = true; }
-      if (open) { border.push(cell); this.wallAt[cell] = n; }
-      const hgt = 1 + (open ? rnd() * 0.16 - 0.04 : 0.02);
-      walls.setMatrixAt(n, M.compose(P.set(centre(x), 0, centre(y)), Q.identity(), S.set(1, hgt, 1)));
-      walls.setColorAt(n, C.setScalar(0.82 + rnd() * 0.3));
-      this.wallScale[n] = hgt;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const a2 = x + dx, b2 = y + dy; if (a2 >= 0 && b2 >= 0 && a2 < l.w && b2 < l.h && l.tiles[idx(l, a2, b2)] !== WALL) open = true; }
+      if (open) border.push(cell);
+      this.wallAt[cell] = n;
+      walls.setMatrixAt(n, M.makeTranslation(centre(x), 0, centre(y)));
+      walls.setColorAt(n, C.setScalar(0.9 + rnd() * 0.16));
     });
     walls.receiveShadow = true;
     walls.frustumCulled = false;
     this.walls = walls;
-    const proxy = new THREE.InstancedMesh(box, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }), border.length);
+    this.level.add(mass);
+    const proxy = new THREE.InstancedMesh(new THREE.BoxGeometry(T, WALL_H, T).translate(0, WALL_H / 2, 0), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }), border.length);
     border.forEach((cell, n) => proxy.setMatrixAt(n, M.makeTranslation(centre(cell % l.w), 0, centre((cell / l.w) | 0))));
     proxy.castShadow = true; proxy.frustumCulled = false;
     this.level.add(walls, proxy);
@@ -340,7 +397,7 @@ export class View {
       const edge = wallNear(x, y);
       if (edge) {
         for (let i = 0, n = rnd() < 0.6 ? 1 + Math.floor(rnd() * 3) : 0; i < n; i++) spots.push([centre(x) + edge[0] * (0.45 + rnd() * 0.45) + (edge[1] ? rnd() * 1.8 - 0.9 : 0), centre(y) + edge[1] * (0.45 + rnd() * 0.45) + (edge[0] ? rnd() * 1.8 - 0.9 : 0), 0.7 + rnd() * 0.9]);
-        for (let i = 0, n = rnd() < 0.3 ? 1 + Math.floor(rnd() * 3) : 0; i < n; i++) rocks.push([centre(x) + edge[0] * (0.6 + rnd() * 0.3) + (edge[1] ? rnd() * 1.8 - 0.9 : 0), centre(y) + edge[1] * (0.6 + rnd() * 0.3) + (edge[0] ? rnd() * 1.8 - 0.9 : 0), 0.5 + rnd() * 1.3]);
+        for (let i = 0, n = rnd() < 0.45 ? 1 + Math.floor(rnd() * 4) : 0; i < n; i++) rocks.push([centre(x) + edge[0] * (0.45 + rnd() * 0.45) + (edge[1] ? rnd() * 1.8 - 0.9 : 0), centre(y) + edge[1] * (0.45 + rnd() * 0.45) + (edge[0] ? rnd() * 1.8 - 0.9 : 0), 0.5 + rnd() * rnd() * 3.2]);
       } else if (rnd() < 0.1) spots.push([centre(x) + rnd() * 1.6 - 0.8, centre(y) + rnd() * 1.6 - 0.8, 0.5 + rnd() * 0.6]);
     }
     for (const p of w.plants) for (let i = 0; i < 4; i++) { const a = rnd() * 6.28, d = 0.5 + rnd() * 0.9; spots.push([p.x + Math.cos(a) * d, p.z + Math.sin(a) * d, 0.6 + rnd() * 0.8]); }
@@ -349,7 +406,9 @@ export class View {
     tufts.count = spots.length;
     spots.forEach(([x, z, sc], n) => { tufts.setMatrixAt(n, M.compose(P.set(x, 0, z), Q.setFromAxisAngle(S.set(0, 1, 0), rnd() * 6.28), S.set(sc, sc * (0.8 + rnd() * 0.6), sc))); tufts.setColorAt(n, C.setRGB(0.7 + rnd() * 0.6, 0.8 + rnd() * 0.5, 0.7 + rnd() * 0.5)); });
     tufts.receiveShadow = true; tufts.frustumCulled = false;
-    const rubble = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.17, 0), new THREE.MeshStandardMaterial({ color: new THREE.Color(look.wall).multiplyScalar(1.1), roughness: 0.95, flatShading: true }), Math.max(1, rocks.length));
+    const rock = new THREE.IcosahedronGeometry(0.2, 1);
+    { const rp = rock.getAttribute('position'); for (let i = 0; i < rp.count; i++) { const k = 0.72 + ((Math.sin(rp.getX(i) * 37.1 + rp.getY(i) * 71.3 + rp.getZ(i) * 53.9) * 43758.5) % 1 + 1) % 1 * 0.5; rp.setXYZ(i, rp.getX(i) * k, rp.getY(i) * k, rp.getZ(i) * k); } rock.computeVertexNormals(); }
+    const rubble = new THREE.InstancedMesh(rock, new THREE.MeshStandardMaterial({ color: new THREE.Color(look.wall).multiplyScalar(1.1), roughness: 0.95, flatShading: true }), Math.max(1, rocks.length));
     rubble.count = rocks.length;
     rocks.forEach(([x, z, sc], n) => rubble.setMatrixAt(n, M.compose(P.set(x, 0.07 * sc, z), Q.setFromAxisAngle(S.set(rnd(), rnd(), rnd()).normalize(), rnd() * 6), S.set(sc, sc * 0.7, sc * (0.7 + rnd() * 0.6)))));
     rubble.castShadow = true; rubble.receiveShadow = true; rubble.frustumCulled = false;
@@ -357,7 +416,7 @@ export class View {
 
     // Daylight through the broken roof: a shaft and a pool, no light of its own beyond the pooled one.
     for (const b of w.breaches) {
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 2.0, 10, 18, 1, true).translate(0, 5, 0), new THREE.MeshBasicMaterial({ color: 0xbcd4e6, transparent: true, opacity: 0.075, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 2.0, 30, 18, 1, true).translate(0, 15, 0), new THREE.MeshBasicMaterial({ color: 0xbcd4e6, transparent: true, opacity: 0.04, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
       const pool = new THREE.Mesh(new THREE.PlaneGeometry(7, 7).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: this.glowMap, color: 0x9fb8c8, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
       shaft.position.set(b.x, 0, b.z); pool.position.set(b.x, 0.05, b.z);
       this.level.add(shaft, pool);

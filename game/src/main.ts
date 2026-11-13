@@ -107,6 +107,9 @@ addEventListener('mouseup', (e) => { if (e.button === 0) mouse.l = false; if (e.
 addEventListener('contextmenu', (e) => e.preventDefault());
 addEventListener('wheel', (e) => { wheel = Math.sign(e.deltaY); }, { passive: true });
 addEventListener('resize', () => view.resize());
+// If the graphics card drops the picture (it happens under memory pressure), take the cheaper one and redraw.
+canvas.addEventListener('webglcontextlost', (e) => e.preventDefault());
+canvas.addEventListener('webglcontextrestored', () => { view.setQuality(true); measured = 999; if (world) view.build(world); hud.say('The picture was lost and has been restored, simplified.', 'note'); });
 addEventListener('click', (e) => { if ((e.target as HTMLElement).closest?.('.btn')) audio.play('ui'); });
 
 function readInput(w: World): Input {

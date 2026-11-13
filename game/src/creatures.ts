@@ -8,7 +8,7 @@ import type { Enemy } from './state';
 
 type Mat = THREE.MeshStandardMaterial;
 const mesh = (g: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z = 0): THREE.Mesh => { const o = new THREE.Mesh(g, m); o.position.set(x, y, z); o.castShadow = true; return o; };
-const group = (x: number, y: number, z: number, ...kids: THREE.Object3D[]): THREE.Group => { const g = new THREE.Group(); g.position.set(x, y, z); g.add(...kids); return g; };
+const group = (x: number, y: number, z: number, ...kids: THREE.Object3D[]): THREE.Group => { const g = new THREE.Group(); g.position.set(x, y, z); if (kids.length) g.add(...kids); return g; };
 const ball = (r: number, sx = 1, sy = 1, sz = 1): THREE.BufferGeometry => new THREE.SphereGeometry(r, 14, 10).scale(sx, sy, sz);
 const cap = (r: number, len: number): THREE.BufferGeometry => new THREE.CapsuleGeometry(r, len, 4, 10);
 const along = (g: THREE.BufferGeometry): THREE.BufferGeometry => g.rotateZ(-Math.PI / 2);
